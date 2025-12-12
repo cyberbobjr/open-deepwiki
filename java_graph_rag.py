@@ -149,10 +149,10 @@ class JavaParser:
         if not parent:
             return None
         
-        # Find the node's index in parent's children
+        # Find the node's index in parent's children using object identity
         node_index = None
         for i, child in enumerate(parent.children):
-            if child.id == node.id:
+            if child is node:
                 node_index = i
                 break
         
@@ -179,7 +179,6 @@ class GraphEnrichedRetriever(BaseRetriever):
     
     vectorstore: Chroma
     k: int = 4
-    fetch_k: int = 10
     method_docs_map: Dict[str, Document] = {}
     
     class Config:
@@ -248,7 +247,7 @@ def setup_java_language():
             'git', 'clone',
             'https://github.com/tree-sitter/tree-sitter-java',
             'vendor/tree-sitter-java'
-        ], check=True)
+        ], check=True, shell=False, timeout=60)
     
     # Build language if not exists
     if not os.path.exists('build/java-languages.so'):
@@ -270,9 +269,10 @@ def create_embeddings(base_url: Optional[str] = None) -> OpenAIEmbeddings:
         Configured OpenAIEmbeddings instance
     """
     if base_url:
+        # Use base_url parameter for newer versions of OpenAI library
         return OpenAIEmbeddings(
-            openai_api_base=base_url,
-            openai_api_key=os.getenv('OPENAI_API_KEY', 'dummy-key')
+            base_url=base_url,
+            api_key=os.getenv('OPENAI_API_KEY', 'dummy-key')
         )
     else:
         return OpenAIEmbeddings()

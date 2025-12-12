@@ -68,7 +68,7 @@ def validate_script_structure():
         ('Fetch dependencies', r'calls.*metadata'),
         ('Enrich context', r'enriched'),
         ('OpenAIEmbeddings', r'OpenAIEmbeddings'),
-        ('Custom URL config', r'openai_api_base'),
+        ('Custom URL config', r'base_url'),
         ('Chroma', r'Chroma'),
         ('Mock Java data', r'MOCK_JAVA_CODE'),
         ('Index methods', r'def index_java_methods'),
