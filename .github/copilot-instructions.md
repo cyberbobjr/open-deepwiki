@@ -19,7 +19,16 @@
 - `setup_java_language()` needs external tools (git + build toolchain). Tests will **skip** if setup fails.
 - Chroma metadata must be primitive types: `index_java_methods()` serializes `calls` as a **comma-separated string**.
   - `GraphEnrichedRetriever` must keep accepting both string and list-like `calls` (tests rely on this).
-- Keep the LangChain import fallbacks (some envs require `langchain_community`): see `core/rag/embeddings.py` / `utils/chat.py`.
+- Use a single canonical import for LangChain OpenAI integrations (no multi-tier fallbacks):
+  - `from langchain_openai import OpenAIEmbeddings` in `core/rag/embeddings.py`
+  - `from langchain_openai import ChatOpenAI` in `utils/chat.py`
+
+## Strict configuration (no silent fallback)
+
+- Do not introduce implicit fallbacks for LLM/embeddings endpoints or models.
+  - Embeddings must use an explicit base URL (`OPENAI_EMBEDDING_API_BASE` / `embeddings_api_base`) and explicit model (`OPENAI_EMBEDDING_MODEL` / `embeddings_model`).
+  - Chat must use an explicit base URL (`OPENAI_CHAT_API_BASE` / `chat_api_base`) and explicit model (`OPENAI_CHAT_MODEL` / `chat_model`).
+- If a required value is missing, fail fast with a clear error (do not silently fall back to `OPENAI_API_BASE` or built-in default models).
 
 ## App structure guidance (refactor target)
 

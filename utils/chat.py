@@ -3,14 +3,7 @@ from __future__ import annotations
 import os
 from typing import Any, Dict, Optional
 
-# Prefer `langchain-openai` for OpenAI SDK v1 compatibility.
-try:
-    from langchain_openai import ChatOpenAI  # type: ignore
-except Exception:  # pragma: no cover
-    try:
-        from langchain_community.chat_models import ChatOpenAI  # type: ignore
-    except Exception:  # pragma: no cover
-        from langchain.chat_models import ChatOpenAI  # type: ignore
+from langchain_openai import ChatOpenAI
 
 
 def create_chat_model(
@@ -26,19 +19,29 @@ def create_chat_model(
     - OPENAI_API_BASE (fallback if `base_url` is None)
     """
 
-    selected_model = model or os.getenv("OPENAI_CHAT_MODEL") or "gpt-4o-mini"
-    selected_base_url = base_url or os.getenv("OPENAI_API_BASE")
+    selected_model = model or os.getenv("OPENAI_CHAT_MODEL")
+    if not selected_model:
+        raise ValueError(
+            "Chat model is not set. Set OPENAI_CHAT_MODEL (or chat_model in YAML)."
+        )
+
+    selected_base_url = base_url or os.getenv("OPENAI_CHAT_API_BASE")
+    if not selected_base_url:
+        raise ValueError(
+            "Chat base URL is not set. Set OPENAI_CHAT_API_BASE (or chat_api_base in YAML)."
+        )
 
     kwargs: Dict[str, Any] = {
         "model": selected_model,
         "temperature": temperature,
     }
 
-    if selected_base_url:
-        for key in ("base_url", "openai_api_base"):
-            try:
-                return ChatOpenAI(**{**kwargs, key: selected_base_url})
-            except TypeError:
-                continue
+    for key in ("base_url", "openai_api_base"):
+        try:
+            return ChatOpenAI(**{**kwargs, key: selected_base_url})
+        except TypeError:
+            continue
 
-    return ChatOpenAI(**kwargs)
+    raise TypeError(
+        "ChatOpenAI does not accept a base URL parameter (tried: base_url, openai_api_base)."
+    )

@@ -34,6 +34,10 @@ class AppConfig(BaseModel):
     embeddings_model: Optional[str] = None
     chat_model: Optional[str] = None
     llm_api_base: Optional[str] = None
+    # Optional: allow using different base URLs for embeddings vs chat.
+    # If not set, both fall back to `llm_api_base` / `OPENAI_API_BASE`.
+    embeddings_api_base: Optional[str] = None
+    chat_api_base: Optional[str] = None
     llm_api_key: Optional[str] = None
 
     # SSL / TLS
@@ -46,11 +50,13 @@ class AppConfig(BaseModel):
 def apply_config_to_env(config: AppConfig) -> None:
     """Apply config values to environment variables if not already set.
 
-    This keeps the rest of the code using the same env vars:
+    This keeps the rest of the code using env vars, with optional per-feature base URLs:
     - OPENAI_API_KEY
-    - OPENAI_API_BASE
+    - OPENAI_API_BASE (default/fallback)
+    - OPENAI_EMBEDDING_API_BASE (optional override for embeddings)
+    - OPENAI_CHAT_API_BASE (optional override for chat)
     - OPENAI_EMBEDDING_MODEL
-    - OPENAI_CHAT_MODEL (for future chat usage)
+    - OPENAI_CHAT_MODEL
     """
 
     if getattr(config, "llm_api_key", None) and not os.getenv("OPENAI_API_KEY"):
@@ -58,6 +64,15 @@ def apply_config_to_env(config: AppConfig) -> None:
 
     if getattr(config, "llm_api_base", None) and not os.getenv("OPENAI_API_BASE"):
         os.environ["OPENAI_API_BASE"] = str(config.llm_api_base)
+
+    # Allow separate endpoints for embeddings vs chat.
+    # Strict: do not fall back from llm_api_base/OPENAI_API_BASE.
+    # If you want the same endpoint for both, set both values explicitly.
+    if getattr(config, "embeddings_api_base", None) and not os.getenv("OPENAI_EMBEDDING_API_BASE"):
+        os.environ["OPENAI_EMBEDDING_API_BASE"] = str(config.embeddings_api_base)
+
+    if getattr(config, "chat_api_base", None) and not os.getenv("OPENAI_CHAT_API_BASE"):
+        os.environ["OPENAI_CHAT_API_BASE"] = str(config.chat_api_base)
 
     if getattr(config, "embeddings_model", None) and not os.getenv("OPENAI_EMBEDDING_MODEL"):
         os.environ["OPENAI_EMBEDDING_MODEL"] = str(config.embeddings_model)

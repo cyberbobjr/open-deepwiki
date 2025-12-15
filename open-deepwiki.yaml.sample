@@ -22,18 +22,28 @@ java_codebase_dir: ./fixtures
 # Ces champs alimentent automatiquement des variables d'env compatibles OpenAI/LangChain :
 # - llm_api_key       -> OPENAI_API_KEY
 # - llm_api_base      -> OPENAI_API_BASE (optionnel)
+# - embeddings_api_base -> OPENAI_EMBEDDING_API_BASE (optionnel; override pour embeddings)
+# - chat_api_base       -> OPENAI_CHAT_API_BASE (optionnel; override pour chat)
 # - embeddings_model  -> OPENAI_EMBEDDING_MODEL
 # - chat_model        -> OPENAI_CHAT_MODEL
+#
+# IMPORTANT (mode strict): pas de fallback implicite.
+# - Si tu utilises un serveur custom, renseigne explicitement `embeddings_api_base` et `chat_api_base`.
+# - Si tu veux la même URL pour les deux, mets la même valeur dans les deux champs.
 #
 # Exemple:
 # embeddings_model: text-embedding-3-large
 # chat_model: gpt-4o-mini
 # llm_api_base: https://your-internal-api.example.com/v1
+# embeddings_api_base: https://your-embeddings-gateway.example.com/v1
+# chat_api_base: https://your-llm-gateway.example.com/v1
 # llm_api_key: sk-...
 
 embeddings_model: text-embedding-3-large
 chat_model: gpt-4o-mini
 llm_api_base: https://api.openai.com/v1
+embeddings_api_base: https://api.openai.com/v1
+chat_api_base: https://api.openai.com/v1
 llm_api_key: null # mets la clé ici, ou préfère l’env `OPENAI_API_KEY`
 
 # SSL / TLS

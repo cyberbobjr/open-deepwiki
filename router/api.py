@@ -118,6 +118,8 @@ def health(request: Request) -> Dict[str, Any]:
         "has_openai_chat_model": bool(os.getenv("OPENAI_CHAT_MODEL")),
         "openai_chat_model": os.getenv("OPENAI_CHAT_MODEL"),
         "openai_embedding_model": os.getenv("OPENAI_EMBEDDING_MODEL"),
+        "openai_chat_api_base": os.getenv("OPENAI_CHAT_API_BASE"),
+        "openai_embedding_api_base": os.getenv("OPENAI_EMBEDDING_API_BASE"),
         "chroma_persist_dir": os.getenv("CHROMA_PERSIST_DIR", "./chroma_db"),
         "chroma_collection": os.getenv("CHROMA_COLLECTION", "java_methods"),
         "method_docs_loaded": len(getattr(request.app.state, "method_docs_map", {}) or {}),

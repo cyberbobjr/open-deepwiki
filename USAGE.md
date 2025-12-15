@@ -23,6 +23,14 @@ Set up environment variables (optional):
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_API_BASE="https://your-internal-api.example.com/v1"  # Optional custom URL
 
+# If you use a custom gateway (recommended), set these explicitly (no implicit fallback):
+export OPENAI_EMBEDDING_API_BASE="https://your-embeddings-gateway.example.com/v1"
+export OPENAI_CHAT_API_BASE="https://your-llm-gateway.example.com/v1"
+
+# Also set explicit models (no implicit defaults):
+export OPENAI_EMBEDDING_MODEL="text-embedding-3-large"
+export OPENAI_CHAT_MODEL="gpt-4o-mini"
+
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
 # Useful behind corporate proxies / custom PKI.
 export SSL_CERT_FILE="/path/to/root-ca-bundle.pem"
@@ -34,6 +42,11 @@ Optionnel: config YAML à la racine (par défaut `open-deepwiki.yaml`) :
 ```yaml
 debug_level: INFO
 java_codebase_dir: ./fixtures
+
+# Optional: LLM endpoints
+# If you need separate gateways, set these:
+# embeddings_api_base: https://your-embeddings-gateway.example.com/v1
+# chat_api_base: https://your-llm-gateway.example.com/v1
 
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
 ssl_ca_file: /path/to/root-ca-bundle.pem
