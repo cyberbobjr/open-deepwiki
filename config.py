@@ -23,6 +23,11 @@ class AppConfig(BaseModel):
     # will be regenerated (replaced). See core/documentation/javadoc_generator.py.
     javadoc_min_meaningful_lines: int = 3
 
+    # Chroma
+    # Chroma enables anonymized telemetry by default; set this to False to opt out.
+    # This maps to the `ANONYMIZED_TELEMETRY` environment variable.
+    chroma_anonymized_telemetry: bool = False
+
     # LLM configuration (for embeddings + chat).
     # This repo currently uses embeddings (Chroma + OpenAIEmbeddings) and may
     # also use a chat model for answer generation.
@@ -53,6 +58,12 @@ def apply_config_to_env(config: AppConfig) -> None:
 
     if getattr(config, "chat_model", None) and not os.getenv("OPENAI_CHAT_MODEL"):
         os.environ["OPENAI_CHAT_MODEL"] = str(config.chat_model)
+
+    # Chroma telemetry opt-out (https://docs.trychroma.com/telemetry)
+    if getattr(config, "chroma_anonymized_telemetry", None) is not None and not os.getenv(
+        "ANONYMIZED_TELEMETRY"
+    ):
+        os.environ["ANONYMIZED_TELEMETRY"] = "True" if bool(config.chroma_anonymized_telemetry) else "False"
 
 
 def load_config(path: Optional[str] = None) -> AppConfig:

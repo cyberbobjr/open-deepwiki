@@ -105,6 +105,7 @@ def health(request: Request) -> Dict[str, Any]:
         "debug_level": getattr(config, "debug_level", "INFO"),
         "java_codebase_dir": getattr(config, "java_codebase_dir", "./"),
         "javadoc_min_meaningful_lines": getattr(config, "javadoc_min_meaningful_lines", 3),
+        "chroma_anonymized_telemetry": getattr(config, "chroma_anonymized_telemetry", False),
         "startup_error": getattr(request.app.state, "startup_error", None),
         "has_openai_api_key": bool(os.getenv("OPENAI_API_KEY")),
         "has_openai_chat_model": bool(os.getenv("OPENAI_CHAT_MODEL")),
