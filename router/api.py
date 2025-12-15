@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, SystemMessage
 
+from core.documentation.postimplementation_log import get_log_dir_from_env, safe_log_filename
+
 
 router = APIRouter()
 
@@ -36,6 +38,33 @@ class IndexDirectoryResponse(BaseModel):
     path: str
     indexed_methods: int
     loaded_method_docs: int
+
+
+class GenerateJavadocRequest(BaseModel):
+    path: str = Field(..., min_length=1, description="Chemin du répertoire à scanner (récursif).")
+
+
+class GenerateJavadocResponse(BaseModel):
+    root_dir: str
+    files_scanned: int
+    files_modified: int
+    members_documented: int
+    log_file: str
+
+
+class PostImplementationLogInfo(BaseModel):
+    filename: str
+    size_bytes: int
+
+
+class PostImplementationLogListResponse(BaseModel):
+    log_dir: str
+    logs: List[PostImplementationLogInfo]
+
+
+class PostImplementationLogReadResponse(BaseModel):
+    filename: str
+    content: str
 
 
 class AskRequest(BaseModel):
@@ -257,3 +286,83 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to index directory: {e}")
+
+
+@router.post("/generate-javadoc", response_model=GenerateJavadocResponse)
+def generate_javadoc(request: Request, req: GenerateJavadocRequest) -> GenerateJavadocResponse:
+    if getattr(request.app.state, "startup_error", None):
+        raise HTTPException(
+            status_code=503, detail=f"Startup failed: {request.app.state.startup_error}"
+        )
+    if not os.getenv("OPENAI_API_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="OPENAI_API_KEY is not set; cannot generate JavaDoc.",
+        )
+
+    directory = Path(req.path).expanduser()
+    if not directory.is_absolute():
+        directory = (Path.cwd() / directory).resolve()
+
+    if not directory.exists() or not directory.is_dir():
+        raise HTTPException(status_code=400, detail=f"Not a directory: {directory}")
+
+    from core.documentation.javadoc_generator import generate_missing_javadoc_in_directory
+
+    try:
+        summary = generate_missing_javadoc_in_directory(
+            str(directory),
+            log_dir=get_log_dir_from_env(),
+        )
+        return GenerateJavadocResponse(**summary)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate JavaDoc: {e}")
+
+
+@router.get("/postimplementation-logs", response_model=PostImplementationLogListResponse)
+def list_postimplementation_logs() -> PostImplementationLogListResponse:
+    log_dir = Path(get_log_dir_from_env()).expanduser().resolve()
+    if not log_dir.exists():
+        return PostImplementationLogListResponse(log_dir=str(log_dir), logs=[])
+    if not log_dir.is_dir():
+        raise HTTPException(status_code=500, detail=f"POSTIMPLEMENTATION_LOG_DIR is not a directory: {log_dir}")
+
+    logs: List[PostImplementationLogInfo] = []
+    for entry in sorted(log_dir.iterdir(), key=lambda p: p.name, reverse=True):
+        if not entry.is_file():
+            continue
+        if not entry.name.startswith("postimplementation_") or not entry.name.endswith(".log"):
+            continue
+        try:
+            size = entry.stat().st_size
+        except Exception:
+            size = 0
+        logs.append(PostImplementationLogInfo(filename=entry.name, size_bytes=size))
+
+    return PostImplementationLogListResponse(log_dir=str(log_dir), logs=logs)
+
+
+@router.get("/postimplementation-logs/{filename}", response_model=PostImplementationLogReadResponse)
+def read_postimplementation_log(filename: str) -> PostImplementationLogReadResponse:
+    safe = safe_log_filename(filename)
+    if safe is None:
+        raise HTTPException(status_code=400, detail="Invalid log filename")
+
+    log_dir = Path(get_log_dir_from_env()).expanduser().resolve()
+    path = (log_dir / safe).resolve()
+
+    # Ensure the file resolves inside the log directory.
+    if log_dir not in path.parents and path != log_dir:
+        raise HTTPException(status_code=400, detail="Invalid log filename")
+
+    if not path.exists() or not path.is_file():
+        raise HTTPException(status_code=404, detail="Log file not found")
+
+    try:
+        content = path.read_text(encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read log: {e}")
+
+    return PostImplementationLogReadResponse(filename=safe, content=content)

@@ -40,15 +40,18 @@ open-deepwiki/
 ├── app.py                 # Entrypoint API (FastAPI)
 ├── indexer.py             # Entrypoint indexation (CLI)
 ├── config.py              # Config YAML + logging
-├── core/                   # Librairie core (package Python)
+├── core/                  # Librairie core (package Python)
 │   ├── parsing/            # Parser Java (tree-sitter)
 │   └── rag/                # Embeddings + indexing + retriever
+├── router/                # Routes FastAPI (endpoints HTTP)
+├── utils/                 # Helpers (vectorstore, chat)
+├── fixtures/              # Fixtures Java pour les tests
+├── tests/                 # Tests unitaires (unittest)
 ├── requirements.txt        # Dépendances
 ├── README.md
 ├── USAGE.md
 ├── validate.py
-├── test_java_graph_rag.py
-└── api/                    # FastAPI app (shim + re-exports)
+└── open-deepwiki.yaml.sample
 ```
 
 ### Key Components
@@ -72,7 +75,9 @@ open-deepwiki/
 - `setup_java_language()`: Downloads and builds tree-sitter-java
 - `create_embeddings()`: Configures OpenAI embeddings with custom URL
 - `index_java_methods()`: Indexes parsed methods into Chroma
-- `create_mock_methods()`: Fallback for demo without full dependencies
+
+Notes:
+- L’application charge le vectorstore via `utils/vectorstore.py` et expose les endpoints via `router/api.py`.
 
 #### 4. Mock Data
 - Complete Java class (`UserService`) with:
@@ -146,7 +151,7 @@ Principales dépendances (voir `requirements.txt` pour la source de vérité) :
 - **Documentation**: docstrings + docs (README/USAGE)
 - **Type Hints**: Full type annotations
 - **Error Handling**: Graceful fallbacks
-- **Compat**: `api/` remplace l'ancien shim `open_deepwiki_api/`
+- **Compat**: plus de shim `api/` ; les entrypoints supportés sont à la racine (`app.py`, `indexer.py`).
 
 ### Deliverables
 

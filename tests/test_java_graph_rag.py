@@ -143,6 +143,53 @@ class TestJavaParsingAndAnalysis(unittest.TestCase):
         signatures = [m.signature for m in methods]
         self.assertTrue(any("createUser" in s for s in signatures))
 
+    def test_generate_missing_javadoc_edits_file_and_writes_log(self):
+        from core.documentation.javadoc_generator import generate_missing_javadoc_in_directory
+
+        class _Resp:
+            def __init__(self, content: str):
+                self.content = content
+
+        class FakeLLM:
+            def invoke(self, messages):
+                # Always return a minimal valid JavaDoc.
+                return _Resp(
+                    "/**\n * Auto-generated.\n *\n * @return value\n */"
+                )
+
+        java_source = (
+            "package demo;\n\n"
+            "public class A {\n"
+            "    public int add(int a, int b) {\n"
+            "        return a + b;\n"
+            "    }\n"
+            "}\n"
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.join(tmp, "src")
+            os.makedirs(root, exist_ok=True)
+            path = os.path.join(root, "A.java")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(java_source)
+
+            log_dir = os.path.join(tmp, "logs")
+            summary = generate_missing_javadoc_in_directory(
+                root,
+                log_dir=log_dir,
+                llm=FakeLLM(),
+            )
+
+            self.assertEqual(summary["files_scanned"], 1)
+            self.assertEqual(summary["files_modified"], 1)
+            self.assertGreaterEqual(summary["members_documented"], 1)
+            self.assertTrue(os.path.exists(summary["log_file"]))
+
+            with open(path, "r", encoding="utf-8") as f:
+                updated = f.read()
+            self.assertIn("/**", updated)
+            self.assertIn("Auto-generated", updated)
+
 
 if __name__ == "__main__":
     unittest.main()
