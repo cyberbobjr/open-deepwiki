@@ -412,6 +412,15 @@ class TestJavadocJobManager(unittest.TestCase):
             mgr = JavadocJobManager()
             job = mgr.start(root, llm=SlowLLM())
 
+            # A session-scoped log file should be created immediately and tied to the session_id.
+            self.assertIsNotNone(job.log_file)
+            log_file = str(job.log_file)
+            self.assertTrue(log_file.endswith(f"_{job.job_id}.log"))
+            self.assertTrue(os.path.exists(log_file))
+            with open(log_file, "r", encoding="utf-8") as f:
+                header = f.read()
+            self.assertIn(f"# session_id={job.job_id}", header)
+
             with self.assertRaises(RuntimeError):
                 mgr.start(root, llm=SlowLLM())
 

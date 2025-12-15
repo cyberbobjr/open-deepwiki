@@ -164,6 +164,8 @@ def generate_missing_javadoc_in_directory(
     root_dir: str,
     *,
     log_dir: str,
+    log: Optional[PostImplementationLog] = None,
+    session_id: Optional[str] = None,
     llm: Optional[Any] = None,
     max_code_chars: int = 4000,
     stop_event: Optional[threading.Event] = None,
@@ -187,8 +189,16 @@ def generate_missing_javadoc_in_directory(
 
     model = llm or create_chat_model(temperature=0.0)
 
-    log = PostImplementationLog.create(log_dir)
-    log.write_header(str(root))
+    if log is None:
+        log = PostImplementationLog.create(log_dir, session_id=session_id)
+
+    try:
+        existing_size = log.path.stat().st_size
+    except Exception:
+        existing_size = 0
+
+    if existing_size == 0:
+        log.write_header(str(root), session_id=session_id)
 
     files = list(iter_java_files(str(root)))
 

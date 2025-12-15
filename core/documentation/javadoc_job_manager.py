@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from core.documentation.javadoc_generator import generate_missing_javadoc_in_directory
-from core.documentation.postimplementation_log import get_log_dir_from_env
+from core.documentation.postimplementation_log import PostImplementationLog, get_log_dir_from_env
 
 
 @dataclass
@@ -20,6 +20,9 @@ class JavadocJob:
     started_at: Optional[float] = None
     finished_at: Optional[float] = None
     stop_requested: bool = False
+
+    # Dedicated log file for this session.
+    log_file: Optional[str] = None
 
     # Results (when completed/stopped)
     summary: Optional[Dict[str, Any]] = None
@@ -79,12 +82,15 @@ class JavadocJobManager:
                     )
 
             job_id = uuid.uuid4().hex
+            log = PostImplementationLog.create(get_log_dir_from_env(), session_id=job_id)
+            log.write_header(str(root_path), session_id=job_id)
             job = JavadocJob(
                 job_id=job_id,
                 root_dir=str(root_path),
                 status="running",
                 created_at=time.time(),
                 started_at=time.time(),
+                log_file=str(log.path),
             )
             stop_event = threading.Event()
 
@@ -138,6 +144,8 @@ class JavadocJobManager:
             summary = generate_missing_javadoc_in_directory(
                 job.root_dir,
                 log_dir=get_log_dir_from_env(),
+                log=PostImplementationLog(path=Path(job.log_file)) if job.log_file else None,
+                session_id=job.job_id,
                 llm=llm,
                 stop_event=stop_event,
                 min_meaningful_lines=int(min_meaningful_lines),

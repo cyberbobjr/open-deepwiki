@@ -13,22 +13,25 @@ class PostImplementationLog:
     path: Path
 
     @staticmethod
-    def create(log_dir: str) -> "PostImplementationLog":
+    def create(log_dir: str, *, session_id: Optional[str] = None) -> "PostImplementationLog":
         directory = Path(log_dir).expanduser()
         directory.mkdir(parents=True, exist_ok=True)
 
         # Unique per "session" (generation run). Include microseconds + random suffix to
         # avoid collisions when multiple runs start within the same second.
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%fZ")
-        suffix = uuid.uuid4().hex[:8]
+        suffix = str(session_id) if session_id else uuid.uuid4().hex[:8]
         filename = f"postimplementation_{ts}_{suffix}.log"
         path = directory / filename
+        path.touch(exist_ok=True)
         return PostImplementationLog(path=path)
 
-    def write_header(self, root_dir: str) -> None:
+    def write_header(self, root_dir: str, *, session_id: Optional[str] = None) -> None:
         self.append_line(f"# postimplementation log")
         self.append_line(f"# created_utc={datetime.now(timezone.utc).isoformat()}")
         self.append_line(f"# root_dir={root_dir}")
+        if session_id:
+            self.append_line(f"# session_id={session_id}")
 
     def append_change(
         self,

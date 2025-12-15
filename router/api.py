@@ -66,8 +66,15 @@ class JavadocJobInfo(BaseModel):
     started_at: Optional[float] = None
     finished_at: Optional[float] = None
     stop_requested: bool
+    log_file: Optional[str] = None
     summary: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+class JavadocSessionLogResponse(BaseModel):
+    session_id: str
+    filename: str
+    content: str
 
 
 class PostImplementationLogInfo(BaseModel):
@@ -358,6 +365,7 @@ def list_generate_javadoc_jobs() -> List[JavadocJobInfo]:
             started_at=j.started_at,
             finished_at=j.finished_at,
             stop_requested=bool(j.stop_requested),
+            log_file=getattr(j, "log_file", None),
             summary=j.summary,
             error=j.error,
         )
@@ -379,11 +387,62 @@ def stop_generate_javadoc_job(job_id: str) -> JavadocJobInfo:
             started_at=j.started_at,
             finished_at=j.finished_at,
             stop_requested=bool(j.stop_requested),
+            log_file=getattr(j, "log_file", None),
             summary=j.summary,
             error=j.error,
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Job not found")
+
+
+@router.get("/generate-javadoc/sessions/{session_id}/log", response_model=JavadocSessionLogResponse)
+def read_javadoc_session_log(session_id: str) -> JavadocSessionLogResponse:
+    """Read the postimplementation log for a JavaDoc generation session.
+
+    Uses the in-memory job registry when available; falls back to searching for a
+    log file whose filename ends with `_{session_id}.log`.
+    """
+
+    log_dir = Path(get_log_dir_from_env()).expanduser().resolve()
+    if not log_dir.exists() or not log_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Log directory not found")
+
+    # Try from in-memory job manager first.
+    log_path: Optional[Path] = None
+    try:
+        from core.documentation.javadoc_job_manager import JAVADOC_JOB_MANAGER
+
+        jobs = JAVADOC_JOB_MANAGER.list()
+        for j in jobs:
+            if j.job_id == session_id and getattr(j, "log_file", None):
+                log_path = Path(str(j.log_file)).expanduser().resolve()
+                break
+    except Exception:
+        log_path = None
+
+    # Fallback: find by filename suffix.
+    if log_path is None:
+        suffix = f"_{session_id}.log"
+        for entry in log_dir.iterdir():
+            if entry.is_file() and entry.name.startswith("postimplementation_") and entry.name.endswith(suffix):
+                log_path = entry.resolve()
+                break
+
+    if log_path is None:
+        raise HTTPException(status_code=404, detail="Session log not found")
+
+    if log_dir not in log_path.parents and log_path != log_dir:
+        raise HTTPException(status_code=400, detail="Invalid session log path")
+
+    if not log_path.exists() or not log_path.is_file():
+        raise HTTPException(status_code=404, detail="Session log not found")
+
+    try:
+        content = log_path.read_text(encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read session log: {e}")
+
+    return JavadocSessionLogResponse(session_id=session_id, filename=log_path.name, content=content)
 
 
 @router.get("/postimplementation-logs", response_model=PostImplementationLogListResponse)
