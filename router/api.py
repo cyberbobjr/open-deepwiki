@@ -73,6 +73,7 @@ class JavadocJobInfo(BaseModel):
 class PostImplementationLogInfo(BaseModel):
     filename: str
     size_bytes: int
+    modified_at: float
 
 
 class PostImplementationLogListResponse(BaseModel):
@@ -400,9 +401,17 @@ def list_postimplementation_logs() -> PostImplementationLogListResponse:
             continue
         try:
             size = entry.stat().st_size
+            modified_at = entry.stat().st_mtime
         except Exception:
             size = 0
-        logs.append(PostImplementationLogInfo(filename=entry.name, size_bytes=size))
+            modified_at = 0.0
+        logs.append(
+            PostImplementationLogInfo(
+                filename=entry.name,
+                size_bytes=size,
+                modified_at=float(modified_at),
+            )
+        )
 
     return PostImplementationLogListResponse(log_dir=str(log_dir), logs=logs)
 

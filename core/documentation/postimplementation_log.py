@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,8 +17,11 @@ class PostImplementationLog:
         directory = Path(log_dir).expanduser()
         directory.mkdir(parents=True, exist_ok=True)
 
-        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
-        filename = f"postimplementation_{ts}.log"
+        # Unique per "session" (generation run). Include microseconds + random suffix to
+        # avoid collisions when multiple runs start within the same second.
+        ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%fZ")
+        suffix = uuid.uuid4().hex[:8]
+        filename = f"postimplementation_{ts}_{suffix}.log"
         path = directory / filename
         return PostImplementationLog(path=path)
 
