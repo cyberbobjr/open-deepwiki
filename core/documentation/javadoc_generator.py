@@ -17,7 +17,8 @@ from utils.chat import create_chat_model
 
 @dataclass(frozen=True)
 class JavadocEdit:
-    insert_at: int
+    start: int
+    end: int
     file_path: Path
     signature: str
     member_type: str
@@ -71,6 +72,69 @@ def _extract_member_nodes(parser: JavaParser, java_code: str) -> Sequence[Tuple[
     return query.captures(tree.root_node)
 
 
+def _javadoc_meaningful_line_count(javadoc: str) -> int:
+    lines = _normalize_line_endings(javadoc).split("\n")
+    meaningful = 0
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+        if s in {"/**", "*/"}:
+            continue
+        if s == "*":
+            continue
+        if s.startswith("* "):
+            s = s[2:].strip()
+        elif s.startswith("*"):
+            s = s[1:].strip()
+        if not s:
+            continue
+        meaningful += 1
+    return meaningful
+
+
+def _should_regenerate_existing_javadoc(javadoc: str, *, min_meaningful_lines: int) -> bool:
+    # Only "improve" very short docs; longer existing docs are left intact.
+    return _javadoc_meaningful_line_count(javadoc) < int(min_meaningful_lines)
+
+
+def _find_existing_javadoc_region(parser: JavaParser, node: Any, code: str) -> Optional[Tuple[int, int, str]]:
+    parent = node.parent
+    if not parent:
+        return None
+
+    node_index = None
+    for i, child in enumerate(parent.children):
+        if (
+            child.type == node.type
+            and child.start_byte == node.start_byte
+            and child.end_byte == node.end_byte
+        ):
+            node_index = i
+            break
+
+    if node_index is not None and node_index > 0:
+        prev_sibling = parent.children[node_index - 1]
+        if prev_sibling.type == "block_comment":
+            comment_text = code[prev_sibling.start_byte : prev_sibling.end_byte]
+            if comment_text.strip().startswith("/**"):
+                start = _line_start_offset(code, prev_sibling.start_byte)
+                end = _line_start_offset(code, node.start_byte)
+                return (start, end, comment_text)
+
+    lookback_start = max(0, node.start_byte - 4000)
+    prefix = code[lookback_start : node.start_byte]
+    match = re.search(r"(/\*\*[\s\S]*?\*/)[\s]*\Z", prefix)
+    if match:
+        comment_text = match.group(1)
+        comment_start = lookback_start + match.start(1)
+        start = _line_start_offset(code, comment_start)
+        end = _line_start_offset(code, node.start_byte)
+        return (start, end, comment_text)
+
+    return None
+
+
 def _extract_type_signature(node: Any, code: str, kind: str) -> str:
     signature_parts: List[str] = []
 
@@ -103,6 +167,7 @@ def generate_missing_javadoc_in_directory(
     llm: Optional[Any] = None,
     max_code_chars: int = 4000,
     stop_event: Optional[threading.Event] = None,
+    min_meaningful_lines: int = 3,
 ) -> Dict[str, Any]:
     """Recursively scans a Java project and generates missing JavaDoc.
 
@@ -144,9 +209,14 @@ def generate_missing_javadoc_in_directory(
             if stop_event is not None and stop_event.is_set():
                 break
 
-            existing = parser._extract_javadoc(node, code)
-            if existing and existing.strip().startswith("/**"):
-                continue
+            existing_region = _find_existing_javadoc_region(parser, node, code)
+            existing_text = existing_region[2] if existing_region else None
+            if existing_text and existing_text.strip().startswith("/**"):
+                if not _should_regenerate_existing_javadoc(
+                    existing_text,
+                    min_meaningful_lines=min_meaningful_lines,
+                ):
+                    continue
 
             if capture_name in {"class", "interface", "enum"}:
                 signature = _extract_type_signature(node, code, capture_name)
@@ -191,14 +261,23 @@ def generate_missing_javadoc_in_directory(
             indented = _indent_block(javadoc, indent)
             insertion = indented + "\n"
 
+            if existing_region is not None:
+                edit_start, edit_end, _ = existing_region
+                reason = "short_javadoc"
+            else:
+                edit_start = line_start
+                edit_end = line_start
+                reason = "missing_javadoc"
+
             edits.append(
                 JavadocEdit(
-                    insert_at=line_start,
+                    start=edit_start,
+                    end=edit_end,
                     file_path=file_path,
                     signature=signature,
                     member_type=member_type,
                     javadoc_block=insertion,
-                    reason="missing_javadoc",
+                    reason=reason,
                 )
             )
 
@@ -206,10 +285,10 @@ def generate_missing_javadoc_in_directory(
             continue
 
         # Apply from bottom to top to keep offsets stable.
-        edits_sorted = sorted(edits, key=lambda e: e.insert_at, reverse=True)
+        edits_sorted = sorted(edits, key=lambda e: e.start, reverse=True)
         updated = code
         for edit in edits_sorted:
-            updated = updated[: edit.insert_at] + edit.javadoc_block + updated[edit.insert_at :]
+            updated = updated[: edit.start] + edit.javadoc_block + updated[edit.end :]
             log.append_change(
                 file_path=str(edit.file_path),
                 signature=edit.signature,

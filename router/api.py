@@ -52,6 +52,24 @@ class GenerateJavadocResponse(BaseModel):
     log_file: str
 
 
+class GenerateJavadocJobResponse(BaseModel):
+    job_id: str
+    root_dir: str
+    status: str
+
+
+class JavadocJobInfo(BaseModel):
+    job_id: str
+    root_dir: str
+    status: str
+    created_at: float
+    started_at: Optional[float] = None
+    finished_at: Optional[float] = None
+    stop_requested: bool
+    summary: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
 class PostImplementationLogInfo(BaseModel):
     filename: str
     size_bytes: int
@@ -85,6 +103,7 @@ def health(request: Request) -> Dict[str, Any]:
         "config_path": getattr(request.app.state, "config_path", "open-deepwiki.yaml"),
         "debug_level": getattr(config, "debug_level", "INFO"),
         "java_codebase_dir": getattr(config, "java_codebase_dir", "./"),
+        "javadoc_min_meaningful_lines": getattr(config, "javadoc_min_meaningful_lines", 3),
         "startup_error": getattr(request.app.state, "startup_error", None),
         "has_openai_api_key": bool(os.getenv("OPENAI_API_KEY")),
         "has_openai_chat_model": bool(os.getenv("OPENAI_CHAT_MODEL")),
@@ -288,8 +307,8 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
         raise HTTPException(status_code=500, detail=f"Failed to index directory: {e}")
 
 
-@router.post("/generate-javadoc", response_model=GenerateJavadocResponse)
-def generate_javadoc(request: Request, req: GenerateJavadocRequest) -> GenerateJavadocResponse:
+@router.post("/generate-javadoc", response_model=GenerateJavadocJobResponse, status_code=202)
+def generate_javadoc(request: Request, req: GenerateJavadocRequest) -> GenerateJavadocJobResponse:
     if getattr(request.app.state, "startup_error", None):
         raise HTTPException(
             status_code=503, detail=f"Startup failed: {request.app.state.startup_error}"
@@ -307,18 +326,62 @@ def generate_javadoc(request: Request, req: GenerateJavadocRequest) -> GenerateJ
     if not directory.exists() or not directory.is_dir():
         raise HTTPException(status_code=400, detail=f"Not a directory: {directory}")
 
-    from core.documentation.javadoc_generator import generate_missing_javadoc_in_directory
+    from core.documentation.javadoc_job_manager import JAVADOC_JOB_MANAGER
+
+    config = getattr(request.app.state, "config", None)
+    min_lines = getattr(config, "javadoc_min_meaningful_lines", 3)
 
     try:
-        summary = generate_missing_javadoc_in_directory(
-            str(directory),
-            log_dir=get_log_dir_from_env(),
-        )
-        return GenerateJavadocResponse(**summary)
+        job = JAVADOC_JOB_MANAGER.start(str(directory), min_meaningful_lines=int(min_lines))
+        return GenerateJavadocJobResponse(job_id=job.job_id, root_dir=job.root_dir, status=job.status)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate JavaDoc: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start JavaDoc generation: {e}")
+
+
+@router.get("/generate-javadoc/jobs", response_model=List[JavadocJobInfo])
+def list_generate_javadoc_jobs() -> List[JavadocJobInfo]:
+    from core.documentation.javadoc_job_manager import JAVADOC_JOB_MANAGER
+
+    jobs = JAVADOC_JOB_MANAGER.list()
+    return [
+        JavadocJobInfo(
+            job_id=j.job_id,
+            root_dir=j.root_dir,
+            status=j.status,
+            created_at=j.created_at,
+            started_at=j.started_at,
+            finished_at=j.finished_at,
+            stop_requested=bool(j.stop_requested),
+            summary=j.summary,
+            error=j.error,
+        )
+        for j in jobs
+    ]
+
+
+@router.post("/generate-javadoc/jobs/{job_id}/stop", response_model=JavadocJobInfo)
+def stop_generate_javadoc_job(job_id: str) -> JavadocJobInfo:
+    from core.documentation.javadoc_job_manager import JAVADOC_JOB_MANAGER
+
+    try:
+        j = JAVADOC_JOB_MANAGER.stop(job_id)
+        return JavadocJobInfo(
+            job_id=j.job_id,
+            root_dir=j.root_dir,
+            status=j.status,
+            created_at=j.created_at,
+            started_at=j.started_at,
+            finished_at=j.finished_at,
+            stop_requested=bool(j.stop_requested),
+            summary=j.summary,
+            error=j.error,
+        )
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Job not found")
 
 
 @router.get("/postimplementation-logs", response_model=PostImplementationLogListResponse)

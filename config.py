@@ -18,6 +18,11 @@ class AppConfig(BaseModel):
     # FastAPI / Uvicorn
     api_port: int = 8000
 
+    # JavaDoc generation
+    # Existing JavaDoc blocks with fewer than this number of "meaningful" content lines
+    # will be regenerated (replaced). See core/documentation/javadoc_generator.py.
+    javadoc_min_meaningful_lines: int = 3
+
     # LLM configuration (for embeddings + chat).
     # This repo currently uses embeddings (Chroma + OpenAIEmbeddings) and may
     # also use a chat model for answer generation.
