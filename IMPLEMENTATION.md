@@ -2,11 +2,11 @@
 
 ## Java Graph RAG (script + application)
 
-Ce document résume l’implémentation du système Java Graph RAG.
+This document summarizes the implementation of the Java Graph RAG system.
 
-Le repo contient :
-- une application (indexer + API) avec des entrypoints à la racine : `indexer.py` et `app.py`
-- des modules “core” séparés (parser/indexing/retriever/etc.) utilisés par l’application
+This repository contains:
+- an application (indexer + API) with root-level entrypoints: `indexer.py` and `app.py`
+- separate “core” modules (parser/indexing/retriever/etc.) used by the application
 
 ### Requirements Met
 
@@ -30,24 +30,24 @@ Le repo contient :
 - Files: `core/rag/embeddings.py`, `utils/vectorstore.py`
 
 ✅ **4. Validation & tests**
-- Tests unitaires via `test_java_graph_rag.py` (fixtures)
-- Script `validate.py` adapté à la structure modulaire
+- Unit tests via `test_java_graph_rag.py` (fixtures)
+- `validate.py` script adapted to the modular structure
 
 ### File Structure
 
 ```
 open-deepwiki/
 ├── app.py                 # Entrypoint API (FastAPI)
-├── indexer.py             # Entrypoint indexation (CLI)
+├── indexer.py             # Indexing entrypoint (CLI)
 ├── config.py              # Config YAML + logging
-├── core/                  # Librairie core (package Python)
-│   ├── parsing/            # Parser Java (tree-sitter)
+├── core/                  # Core library (Python package)
+│   ├── parsing/            # Java parser (tree-sitter)
 │   └── rag/                # Embeddings + indexing + retriever
 ├── router/                # Routes FastAPI (endpoints HTTP)
 ├── utils/                 # Helpers (vectorstore, chat)
-├── fixtures/              # Fixtures Java pour les tests
-├── tests/                 # Tests unitaires (unittest)
-├── requirements.txt        # Dépendances
+├── fixtures/              # Java fixtures for tests
+├── tests/                 # Unit tests (unittest)
+├── requirements.txt        # Dependencies
 ├── README.md
 ├── USAGE.md
 ├── validate.py
@@ -77,7 +77,7 @@ open-deepwiki/
 - `index_java_methods()`: Indexes parsed methods into Chroma
 
 Notes:
-- L’application charge le vectorstore via `utils/vectorstore.py` et expose les endpoints via `router/api.py`.
+- The application loads the vector store via `utils/vectorstore.py` and exposes endpoints via `router/api.py`.
 
 #### 4. Mock Data
 - Complete Java class (`UserService`) with:
@@ -109,7 +109,7 @@ Notes:
 
 4. **Validation**
    - Syntax validation passes
-   - Le repo inclut des scripts/tests pour valider le parsing + l’indexation + la récupération
+   - The repo includes scripts/tests to validate parsing + indexing + retrieval
 
 ### Testing
 
@@ -120,7 +120,7 @@ The implementation includes:
 
 ### Usage
 
-Mode “application” (indexer + API) :
+“Application” mode (indexer + API):
 
 ```bash
 pip install -r requirements.txt
@@ -128,7 +128,7 @@ python indexer.py
 uvicorn app:app --reload --port 8000
 ```
 
-Mode “démo script” (historique) : supprimé (refactor modulaire).
+“Demo script” mode (historical): removed (modular refactor).
 
 With custom OpenAI endpoint:
 ```bash
@@ -139,7 +139,7 @@ python indexer.py
 
 ### Dependencies
 
-Principales dépendances (voir `requirements.txt` pour la source de vérité) :
+Main dependencies (see `requirements.txt` for the source of truth):
 - tree-sitter==0.21.3
 - langchain (+ split packages : langchain-core, langchain-openai, langchain-chroma, ...)
 - chromadb
@@ -151,11 +151,11 @@ Principales dépendances (voir `requirements.txt` pour la source de vérité) :
 - **Documentation**: docstrings + docs (README/USAGE)
 - **Type Hints**: Full type annotations
 - **Error Handling**: Graceful fallbacks
-- **Compat**: plus de shim `api/` ; les entrypoints supportés sont à la racine (`app.py`, `indexer.py`).
+- **Compat**: no more `api/` shim; the supported entrypoints are at the repo root (`app.py`, `indexer.py`).
 
 ### Deliverables
 
-Deliverables principaux :
+Main deliverables:
 1. ✅ Python script for Java Graph RAG
 2. ✅ Tree-sitter parsing with `.captures()`
 3. ✅ GraphEnrichedRetriever implementation
@@ -163,6 +163,6 @@ Deliverables principaux :
 5. ✅ Mock Java data
 6. ✅ Indexing logic
 7. ✅ Test queries in `__main__`
-8. ✅ API FastAPI + indexer CLI (entrypoints à la racine)
+8. ✅ FastAPI API + indexer CLI (root-level entrypoints)
 9. ✅ Documentation (README.md, USAGE.md)
 10. ✅ Validation tools
