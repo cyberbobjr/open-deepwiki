@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -28,9 +29,11 @@ _JAVADOC_SYSTEM_PROMPT = (
     "You write JavaDoc for Java code. "
     "Return ONLY a valid JavaDoc block comment that starts with '/**' and ends with '*/'. "
     "No markdown, no extra text. "
-    "Keep it concise (prefer <= 12 lines). "
+    "Write thorough, non-concise JavaDoc that fully describes behavior and intent. "
+    "For classes/interfaces/enums: describe responsibility, key concepts/invariants, and usage notes when evident. "
+    "For methods/constructors: describe what it does, important edge cases, side effects, and any assumptions visible in the code. "
     "Include @param tags for each parameter when parameters exist; include @return when non-void. "
-    "If the member can throw, include @throws only when obvious from the code."
+    "Include @throws only when obvious from the code."
 )
 
 
@@ -58,11 +61,25 @@ def _extract_member_nodes(parser: JavaParser, java_code: str) -> Sequence[Tuple[
     tree = parser.parser.parse(bytes(java_code, "utf8"))
     query = parser.java_language.query(
         """
+        (class_declaration) @class
+        (interface_declaration) @interface
+        (enum_declaration) @enum
         (method_declaration) @method
         (constructor_declaration) @constructor
         """
     )
     return query.captures(tree.root_node)
+
+
+def _extract_type_signature(node: Any, code: str, kind: str) -> str:
+    signature_parts: List[str] = []
+
+    for child in getattr(node, "children", []) or []:
+        if child.type in ["modifiers", "identifier", "type_parameters"]:
+            signature_parts.append(code[child.start_byte : child.end_byte])
+
+    base = " ".join(signature_parts).strip()
+    return f"{kind} {base}".strip()
 
 
 def _ensure_javadoc_only(text: str) -> str:
@@ -85,6 +102,7 @@ def generate_missing_javadoc_in_directory(
     log_dir: str,
     llm: Optional[Any] = None,
     max_code_chars: int = 4000,
+    stop_event: Optional[threading.Event] = None,
 ) -> Dict[str, Any]:
     """Recursively scans a Java project and generates missing JavaDoc.
 
@@ -113,6 +131,9 @@ def generate_missing_javadoc_in_directory(
     members_documented = 0
 
     for file_path in files:
+        if stop_event is not None and stop_event.is_set():
+            break
+
         original = file_path.read_text(encoding="utf-8")
         code = _normalize_line_endings(original)
 
@@ -120,12 +141,19 @@ def generate_missing_javadoc_in_directory(
 
         captures = _extract_member_nodes(parser, code)
         for node, capture_name in captures:
+            if stop_event is not None and stop_event.is_set():
+                break
+
             existing = parser._extract_javadoc(node, code)
             if existing and existing.strip().startswith("/**"):
                 continue
 
-            signature = parser._extract_signature(node, code)
-            member_type = "method" if capture_name == "method" else "constructor"
+            if capture_name in {"class", "interface", "enum"}:
+                signature = _extract_type_signature(node, code, capture_name)
+                member_type = capture_name
+            else:
+                signature = parser._extract_signature(node, code)
+                member_type = "method" if capture_name == "method" else "constructor"
 
             snippet = code[node.start_byte : node.end_byte]
             if len(snippet) > max_code_chars:
@@ -139,6 +167,9 @@ def generate_missing_javadoc_in_directory(
                     snippet,
                 ]
             )
+
+            if stop_event is not None and stop_event.is_set():
+                break
 
             response = model.invoke(
                 [

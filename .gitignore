@@ -40,3 +40,4 @@ Thumbs.db
 .coverage
 htmlcov/
 open-deepwiki.yaml
+postimplementation_logs
