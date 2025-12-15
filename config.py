@@ -161,6 +161,12 @@ def prefetch_tiktoken_encodings(config: AppConfig) -> None:
 
     encodings = getattr(config, "tiktoken_prefetch_encodings", None) or ["cl100k_base"]
 
+    logging.getLogger(__name__).info(
+        "tiktoken prefetch enabled (encodings=%s, TIKTOKEN_CACHE_DIR=%s)",
+        encodings,
+        os.getenv("TIKTOKEN_CACHE_DIR"),
+    )
+
     try:
         import tiktoken  # type: ignore
     except Exception as e:  # pragma: no cover
@@ -170,6 +176,7 @@ def prefetch_tiktoken_encodings(config: AppConfig) -> None:
         ) from e
 
     for name in encodings:
+        logging.getLogger(__name__).info("Prefetching tiktoken encoding: %s", name)
         tiktoken.get_encoding(name)
 
 
