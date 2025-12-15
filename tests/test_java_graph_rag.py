@@ -130,7 +130,7 @@ class TestJavaParsingAndAnalysis(unittest.TestCase):
 
     def test_scan_java_codebase_dir_collects_methods(self):
         from core.parsing.java_parser import JavaParser
-        from api.indexer import scan_java_methods
+        from indexer import scan_java_methods
 
         parser = JavaParser()
         fixtures_path = os.path.join(

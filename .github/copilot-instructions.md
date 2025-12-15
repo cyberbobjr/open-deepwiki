@@ -35,13 +35,25 @@
   - `app.py` (FastAPI)
   - `indexer.py` (CLI)
   - `config.py` (YAML config)
-- `api/` exists as a compatibility shim (re-exports).
+
+## Python environment (IMPORTANT)
+
+- Always use the repo-local virtualenv in `./venv` when running any Python command in the terminal.
+  - Use `./venv/bin/python` instead of `python`.
+  - Use `./venv/bin/pip` instead of `pip`.
+  - For module invocations: `./venv/bin/python -m <module>` (e.g., `./venv/bin/python -m unittest -v`).
+  - If the venv is missing, create it with `python -m venv venv` and then install deps.
 
 ## Local workflows
 
 - Install deps: `pip install -r requirements.txt`
 - Run unit tests: `python -m unittest -v` (uses fixture `fixtures/SampleService.java`)
 - Run lightweight validation: `python validate.py`
+
+Note: Prefer the venv equivalents:
+- `./venv/bin/pip install -r requirements.txt`
+- `./venv/bin/python -m unittest -v`
+- `./venv/bin/python validate.py`
 
 ## Environment variables
 

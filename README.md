@@ -89,9 +89,6 @@ curl -X POST http://127.0.0.1:8000/index-directory \
 
 - Le script historique `java_graph_rag.py` a été supprimé et refactorisé en modules rangés dans `core/`.
 - Les entrypoints “principaux” restent à la racine : `app.py`, `indexer.py`, `config.py`.
-
-- Les entrypoints “principaux” sont à la racine : `app.py`, `indexer.py`, `config.py`.
-- Le package `api/` existe comme shim/compatibilité (anciens imports/commandes).
 - Les routes HTTP sont définies dans `router/api.py` et incluses par `app.py`.
 - Les utilitaires Chroma/LangChain utilisés par l’API sont dans `utils/vectorstore.py`.
 
