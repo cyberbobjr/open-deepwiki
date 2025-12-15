@@ -1,149 +1,144 @@
 #!/usr/bin/env python3
-"""
-Test script for Java Graph RAG - validates core parsing functionality.
-"""
+"""Unit tests for Java Graph RAG."""
 
-import sys
 import os
+import sys
+import tempfile
+import unittest
 
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-def test_imports():
-    """Test that all required imports work."""
-    print("Testing imports...")
-    
-    try:
-        from tree_sitter import Language, Parser
-        print("✓ tree-sitter imports successful")
-    except ImportError as e:
-        print(f"✗ Failed to import tree-sitter: {e}")
-        return False
-    
-    try:
-        from java_graph_rag import JavaMethod, create_mock_methods
-        print("✓ JavaMethod and mock methods imported")
-    except ImportError as e:
-        print(f"✗ Failed to import from java_graph_rag: {e}")
-        return False
-    
-    return True
 
-
-def test_mock_methods():
-    """Test mock method generation."""
-    print("\nTesting mock method generation...")
-    
-    from java_graph_rag import create_mock_methods
-    
-    methods = create_mock_methods()
-    print(f"✓ Created {len(methods)} mock methods")
-    
-    # Verify structure
-    for method in methods:
-        assert hasattr(method, 'id'), "Method missing 'id' attribute"
-        assert hasattr(method, 'signature'), "Method missing 'signature' attribute"
-        assert hasattr(method, 'type'), "Method missing 'type' attribute"
-        assert hasattr(method, 'calls'), "Method missing 'calls' attribute"
-        assert hasattr(method, 'code'), "Method missing 'code' attribute"
-        assert hasattr(method, 'javadoc'), "Method missing 'javadoc' attribute"
-    
-    print("✓ All mock methods have required attributes")
-    
-    # Test specific method
-    create_user = methods[0]
-    assert create_user.type == "method"
-    assert "createUser" in create_user.signature
-    assert "validateEmail" in create_user.calls
-    assert "generateUserId" in create_user.calls
-    assert "saveToDatabase" in create_user.calls
-    print("✓ Mock method structure validated")
-    
-    return True
-
-
-def test_java_method_dataclass():
-    """Test JavaMethod dataclass."""
-    print("\nTesting JavaMethod dataclass...")
-    
-    from java_graph_rag import JavaMethod
-    
-    method = JavaMethod(
-        id="test_method",
-        signature="public void testMethod()",
-        type="method",
-        calls=["helperMethod"],
-        code="public void testMethod() { helperMethod(); }",
-        javadoc="/** Test method */"
-    )
-    
-    assert method.id == "test_method"
-    assert method.signature == "public void testMethod()"
-    assert method.type == "method"
-    assert method.calls == ["helperMethod"]
-    assert "helperMethod" in method.code
-    assert method.javadoc == "/** Test method */"
-    
-    print("✓ JavaMethod dataclass works correctly")
-    return True
-
-
-def test_tree_sitter_setup():
-    """Test tree-sitter basic functionality."""
-    print("\nTesting tree-sitter basic functionality...")
-    
-    from tree_sitter import Language, Parser
-    
-    # This will fail if tree-sitter-java isn't set up, but that's expected
-    # We're just testing that the API works
-    try:
-        parser = Parser()
-        print("✓ Parser created successfully")
-    except Exception as e:
-        print(f"✗ Failed to create parser: {e}")
-        return False
-    
-    return True
-
-
-def main():
-    """Run all tests."""
-    print("=" * 80)
-    print("Java Graph RAG - Test Suite")
-    print("=" * 80)
-    print()
-    
-    tests = [
-        ("Imports", test_imports),
-        ("Mock Methods", test_mock_methods),
-        ("JavaMethod Dataclass", test_java_method_dataclass),
-        ("Tree-sitter Setup", test_tree_sitter_setup),
-    ]
-    
-    passed = 0
-    failed = 0
-    
-    for name, test_func in tests:
+class TestJavaParsingAndAnalysis(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
         try:
-            if test_func():
-                passed += 1
-            else:
-                failed += 1
-                print(f"\n✗ {name} test failed")
+            from core.parsing.tree_sitter_setup import setup_java_language
+
+            setup_java_language()
         except Exception as e:
-            failed += 1
-            print(f"\n✗ {name} test failed with exception: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    print()
-    print("=" * 80)
-    print(f"Test Results: {passed} passed, {failed} failed")
-    print("=" * 80)
-    
-    return failed == 0
+            raise unittest.SkipTest(
+                f"tree-sitter-java setup failed (git/build tools missing?): {e}"
+            )
+
+    def _read_fixture(self) -> str:
+        fixture_path = os.path.join(
+            os.path.dirname(os.path.abspath(__file__)),
+            "fixtures",
+            "SampleService.java",
+        )
+        with open(fixture_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    def test_parses_methods_constructors_and_javadoc(self):
+        from core.parsing.java_parser import JavaParser
+
+        code = self._read_fixture()
+        parser = JavaParser()
+        methods = parser.parse_java_file(code)
+
+        signatures = [m.signature for m in methods]
+        self.assertTrue(any("createUser" in s for s in signatures))
+        self.assertTrue(any("validateEmail" in s for s in signatures))
+        self.assertTrue(any("SampleService" in s for s in signatures))
+
+        create_user = next(m for m in methods if "createUser" in m.signature)
+        self.assertEqual(create_user.type, "method")
+        self.assertIn("validateEmail", create_user.calls)
+        self.assertIn("generateUserId", create_user.calls)
+        self.assertIn("saveToDatabase", create_user.calls)
+        self.assertIsNotNone(create_user.javadoc)
+        self.assertTrue((create_user.javadoc or "").strip().startswith("/**"))
+
+        constructor = next(
+            m for m in methods if m.type == "constructor" and "SampleService" in m.signature
+        )
+        self.assertIsNotNone(constructor.javadoc)
+        self.assertIn("validateConnection", constructor.calls)
+
+    def test_indexing_builds_documents_and_metadata(self):
+        from core.parsing.java_parser import JavaParser
+        from core.rag.indexing import index_java_methods
+        from langchain_core.embeddings import DeterministicFakeEmbedding
+        from langchain_chroma import Chroma
+
+        code = self._read_fixture()
+        parser = JavaParser()
+        methods = parser.parse_java_file(code)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            vectorstore = Chroma(
+                collection_name="test_java_methods",
+                embedding_function=DeterministicFakeEmbedding(size=12),
+                persist_directory=tmp,
+            )
+            method_docs_map = index_java_methods(methods, vectorstore)
+
+        self.assertEqual(set(method_docs_map.keys()), set(m.id for m in methods))
+
+        create_user = next(m for m in methods if "createUser" in m.signature)
+        doc = method_docs_map[create_user.id]
+        self.assertEqual(doc.metadata["id"], create_user.id)
+        self.assertIn("createUser", doc.metadata["signature"])
+        self.assertIn("validateEmail", doc.metadata["calls"])
+        self.assertTrue(doc.metadata["has_javadoc"])
+        self.assertIn("Signature:", doc.page_content)
+        self.assertIn("Calls:", doc.page_content)
+        self.assertIn("Code:", doc.page_content)
+
+    def test_graph_enrichment_adds_dependency_docs(self):
+        from core.parsing.java_parser import JavaParser
+        from core.rag.indexing import index_java_methods
+        from core.rag.retriever import GraphEnrichedRetriever
+        from langchain_core.embeddings import DeterministicFakeEmbedding
+        from langchain_chroma import Chroma
+
+        code = self._read_fixture()
+        parser = JavaParser()
+        methods = parser.parse_java_file(code)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            vectorstore = Chroma(
+                collection_name="test_java_methods_enrich",
+                embedding_function=DeterministicFakeEmbedding(size=12),
+                persist_directory=tmp,
+            )
+            method_docs_map = index_java_methods(methods, vectorstore)
+
+            create_user = next(m for m in methods if "createUser" in m.signature)
+            primary_doc = method_docs_map[create_user.id]
+
+            # Make the initial retrieval deterministic for the test.
+            vectorstore.similarity_search = lambda query, k=4, filter=None, **kwargs: [primary_doc]
+
+            retriever = GraphEnrichedRetriever(
+                vectorstore=vectorstore,
+                method_docs_map=method_docs_map,
+                k=1,
+            )
+
+            results = retriever.get_relevant_documents("create a user")
+            self.assertGreaterEqual(len(results), 2)
+
+            dep_docs = [d for d in results if d.metadata.get("is_dependency")]
+            self.assertTrue(dep_docs, "Expected at least one dependency document")
+
+            dep = dep_docs[0]
+            self.assertEqual(dep.metadata.get("called_from"), create_user.id)
+            self.assertTrue(dep.page_content.startswith("[DEPENDENCY]"))
+
+    def test_scan_java_codebase_dir_collects_methods(self):
+        from core.parsing.java_parser import JavaParser
+        from api.indexer import scan_java_methods
+
+        parser = JavaParser()
+        methods = scan_java_methods("./fixtures", parser)
+
+        self.assertTrue(methods)
+        signatures = [m.signature for m in methods]
+        self.assertTrue(any("createUser" in s for s in signatures))
 
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    unittest.main()

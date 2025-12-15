@@ -1,0 +1,25 @@
+# open-deepwiki configuration
+# Loaded by the FastAPI app (and future indexer) via `OPEN_DEEPWIKI_CONFIG` or this default filename.
+
+debug_level: INFO
+
+# Root directory to scan/index for Java code.
+# Example: /abs/path/to/repo or ./fixtures
+java_codebase_dir: ./fixtures
+# LLM (embeddings + chat)
+# Ces champs alimentent automatiquement des variables d'env compatibles OpenAI/LangChain :
+# - llm_api_key       -> OPENAI_API_KEY
+# - llm_api_base      -> OPENAI_API_BASE (optionnel)
+# - embeddings_model  -> OPENAI_EMBEDDING_MODEL
+# - chat_model        -> OPENAI_CHAT_MODEL
+#
+# Exemple:
+# embeddings_model: text-embedding-3-large
+# chat_model: gpt-4o-mini
+# llm_api_base: https://your-internal-api.example.com/v1
+# llm_api_key: sk-...
+
+embeddings_model: text-embedding-3-large
+chat_model: gpt-4o-mini
+llm_api_base: https://api.openai.com/v1
+llm_api_key: null # mets la clé ici, ou préfère l’env `OPENAI_API_KEY`

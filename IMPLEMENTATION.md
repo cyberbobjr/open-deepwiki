@@ -1,8 +1,12 @@
 # Implementation Summary
 
-## Java Graph RAG Script
+## Java Graph RAG (script + application)
 
-This document summarizes the implementation of the Java Graph RAG (Retrieval-Augmented Generation) system.
+Ce document résume l’implémentation du système Java Graph RAG.
+
+Le repo contient :
+- une application (indexer + API) avec des entrypoints à la racine : `indexer.py` et `app.py`
+- des modules “core” séparés (parser/indexing/retriever/etc.) utilisés par l’application
 
 ### Requirements Met
 
@@ -10,38 +14,41 @@ This document summarizes the implementation of the Java Graph RAG (Retrieval-Aug
 - Uses `.captures()` API for extracting AST nodes
 - Extracts method/constructor ID, signature, type, calls, code
 - Implements Javadoc extraction via sibling node lookup
-- File: `java_graph_rag.py` (lines 40-164)
+- Files: `core/parsing/tree_sitter_setup.py`, `core/parsing/java_parser.py`
 
 ✅ **2. LangChain GraphEnrichedRetriever**
 - Custom retriever extending `BaseRetriever`
 - Performs vector similarity search
 - Fetches dependency documentation via "calls" metadata IDs
 - Enriches context with related method implementations
-- File: `java_graph_rag.py` (lines 173-219)
+- File: `core/rag/retriever.py`
 
 ✅ **3. Chroma & OpenAIEmbeddings**
 - Uses Chroma as vector store
 - Configures OpenAIEmbeddings with custom internal URL support
 - Supports `base_url` parameter for custom endpoints
-- File: `java_graph_rag.py` (lines 268-283, 469-477)
+- Files: `core/rag/embeddings.py`, `utils/vectorstore.py`
 
-✅ **4. Mock Java Data & Test Queries**
-- Comprehensive mock Java code (UserService class)
-- Complete indexing logic
-- Three test queries in `__main__`
-- File: `java_graph_rag.py` (lines 337-437, 513-598)
+✅ **4. Validation & tests**
+- Tests unitaires via `test_java_graph_rag.py` (fixtures)
+- Script `validate.py` adapté à la structure modulaire
 
 ### File Structure
 
 ```
-/home/runner/work/open-deepwiki/open-deepwiki/
-├── java_graph_rag.py       # Main implementation (599 lines)
-├── requirements.txt        # Dependencies (5 lines)
-├── README.md              # Project overview (95 lines)
-├── USAGE.md               # Comprehensive usage guide (293 lines)
-├── validate.py            # Validation script (227 lines)
-├── test_java_graph_rag.py # Unit tests (149 lines)
-└── .gitignore            # Excludes build artifacts
+open-deepwiki/
+├── app.py                 # Entrypoint API (FastAPI)
+├── indexer.py             # Entrypoint indexation (CLI)
+├── config.py              # Config YAML + logging
+├── core/                   # Librairie core (package Python)
+│   ├── parsing/            # Parser Java (tree-sitter)
+│   └── rag/                # Embeddings + indexing + retriever
+├── requirements.txt        # Dépendances
+├── README.md
+├── USAGE.md
+├── validate.py
+├── test_java_graph_rag.py
+└── api/                    # FastAPI app (shim + re-exports)
 ```
 
 ### Key Components
@@ -97,9 +104,7 @@ This document summarizes the implementation of the Java Graph RAG (Retrieval-Aug
 
 4. **Validation**
    - Syntax validation passes
-   - All requirements validated
-   - No security vulnerabilities found (CodeQL)
-   - No vulnerable dependencies
+   - Le repo inclut des scripts/tests pour valider le parsing + l’indexation + la récupération
 
 ### Testing
 
@@ -110,40 +115,42 @@ The implementation includes:
 
 ### Usage
 
-Basic usage:
+Mode “application” (indexer + API) :
+
 ```bash
 pip install -r requirements.txt
-python java_graph_rag.py
+python indexer.py
+uvicorn app:app --reload --port 8000
 ```
+
+Mode “démo script” (historique) : supprimé (refactor modulaire).
 
 With custom OpenAI endpoint:
 ```bash
 export OPENAI_API_BASE="https://internal.api.com/v1"
 export OPENAI_API_KEY="your-key"
-python java_graph_rag.py
+python indexer.py
 ```
 
 ### Dependencies
 
-All dependencies checked for vulnerabilities:
-- tree-sitter==0.21.3 ✓
-- langchain==0.0.350 ✓
-- chromadb==0.4.22 ✓
-- openai==1.6.1 ✓
-- tiktoken==0.5.2 ✓
+Principales dépendances (voir `requirements.txt` pour la source de vérité) :
+- tree-sitter==0.21.3
+- langchain (+ split packages : langchain-core, langchain-openai, langchain-chroma, ...)
+- chromadb
+- openai (SDK)
+- tiktoken
 
 ### Code Quality
 
-- **Lines of Code**: 599 (main script)
-- **Documentation**: Comprehensive docstrings
+- **Documentation**: docstrings + docs (README/USAGE)
 - **Type Hints**: Full type annotations
 - **Error Handling**: Graceful fallbacks
-- **Code Review**: All issues addressed
-- **Security**: CodeQL clean (0 alerts)
+- **Compat**: `api/` remplace l'ancien shim `open_deepwiki_api/`
 
 ### Deliverables
 
-All required deliverables completed:
+Deliverables principaux :
 1. ✅ Python script for Java Graph RAG
 2. ✅ Tree-sitter parsing with `.captures()`
 3. ✅ GraphEnrichedRetriever implementation
@@ -151,6 +158,6 @@ All required deliverables completed:
 5. ✅ Mock Java data
 6. ✅ Indexing logic
 7. ✅ Test queries in `__main__`
-8. ✅ Documentation (README.md, USAGE.md)
-9. ✅ Validation tools
-10. ✅ Security verified
+8. ✅ API FastAPI + indexer CLI (entrypoints à la racine)
+9. ✅ Documentation (README.md, USAGE.md)
+10. ✅ Validation tools

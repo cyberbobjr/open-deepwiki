@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
-"""
-Simple validation script for Java Graph RAG that demonstrates the concepts
-without requiring full dependency installation.
+"""Validation script for open-deepwiki core modules.
+
+This repo originally had a single `java_graph_rag.py` demo script.
+The implementation is now split into small modules (parser/indexing/retriever/etc).
+
+This script is intentionally lightweight: it validates the presence of the core
+building blocks without requiring a full runtime setup.
 """
 
 import re
@@ -46,89 +50,68 @@ def validate_requirements():
 
 
 def validate_script_structure():
-    """Validate the script has all required components."""
-    print("\nValidating script structure...")
-    
-    with open('java_graph_rag.py', 'r') as f:
-        script = f.read()
-    
+    """Validate the codebase has all required components."""
+    print("\nValidating module structure...")
+
+    targets = {
+        "java_parser.py": "core/parsing/java_parser.py",
+        "tree_sitter_setup.py": "core/parsing/tree_sitter_setup.py",
+        "rag_retriever.py": "core/rag/retriever.py",
+        "rag_indexing.py": "core/rag/indexing.py",
+        "rag_embeddings.py": "core/rag/embeddings.py",
+    }
+
+    sources = {}
+    for label, path in targets.items():
+        with open(path, "r", encoding="utf-8") as f:
+            sources[label] = f.read()
+
     required_components = [
-        ('JavaParser class', r'class JavaParser:'),
-        ('parse_java_file method', r'def parse_java_file'),
-        ('.captures usage', r'\.captures\('),
-        ('Extract ID', r'id:'),
-        ('Extract signature', r'signature:'),
-        ('Extract type', r'type:'),
-        ('Extract calls', r'calls:'),
-        ('Extract code', r'code:'),
-        ('Extract Javadoc', r'javadoc'),
-        ('Sibling node lookup', r'sibling'),
-        ('GraphEnrichedRetriever class', r'class GraphEnrichedRetriever'),
-        ('Vector search', r'similarity_search'),
-        ('Fetch dependencies', r'calls.*metadata'),
-        ('Enrich context', r'enriched'),
-        ('OpenAIEmbeddings', r'OpenAIEmbeddings'),
-        ('Custom URL config', r'base_url'),
-        ('Chroma', r'Chroma'),
-        ('Mock Java data', r'MOCK_JAVA_CODE'),
-        ('Index methods', r'def index_java_methods'),
-        ('__main__', r'if __name__ == "__main__"'),
-        ('Test queries', r'test_queries'),
+        ("JavaParser class", "java_parser.py", r"class JavaParser"),
+        ("parse_java_file method", "java_parser.py", r"def parse_java_file"),
+        (".captures usage", "java_parser.py", r"\.captures\("),
+        ("Javadoc extraction", "java_parser.py", r"def _extract_javadoc"),
+        ("GraphEnrichedRetriever class", "rag_retriever.py", r"class GraphEnrichedRetriever"),
+        ("Vector search", "rag_retriever.py", r"similarity_search"),
+        ("calls parsing (str/list)", "rag_retriever.py", r"isinstance\(calls_meta, str\)"),
+        ("Index methods", "rag_indexing.py", r"def index_java_methods"),
+        ("calls serialized", "rag_indexing.py", r"calls_serialized"),
+        ("Create embeddings", "rag_embeddings.py", r"def create_embeddings"),
+        ("Custom URL config", "rag_embeddings.py", r"base_url"),
+        ("tree-sitter build", "tree_sitter_setup.py", r"Language\.build_library"),
     ]
     
     all_found = True
-    for name, pattern in required_components:
-        if re.search(pattern, script):
-            print(f"✓ {name}")
+    for name, file_key, pattern in required_components:
+        if re.search(pattern, sources[file_key]):
+            print(f"✓ {name} ({file_key})")
         else:
-            print(f"✗ {name} NOT found")
+            print(f"✗ {name} NOT found ({file_key})")
             all_found = False
     
     return all_found
 
 
 def validate_mock_data():
-    """Validate the mock Java data is present and valid."""
+    """Legacy hook: mock data demo script was removed."""
     print("\nValidating mock Java data...")
-    
-    with open('java_graph_rag.py', 'r') as f:
-        script = f.read()
-    
-    # Extract MOCK_JAVA_CODE
-    match = re.search(r'MOCK_JAVA_CODE = """(.+?)"""', script, re.DOTALL)
-    if not match:
-        print("✗ MOCK_JAVA_CODE not found")
-        return False
-    
-    mock_code = match.group(1)
-    
-    # Check for Java elements
-    java_elements = [
-        ('Package declaration', r'package\s+'),
-        ('Import statements', r'import\s+'),
-        ('Class declaration', r'class\s+\w+'),
-        ('Method with Javadoc', r'/\*\*[\s\S]*?\*/\s*public'),
-        ('Constructor', r'public\s+\w+\s*\([^)]*\)\s*{'),
-        ('Private method', r'private\s+\w+'),
-    ]
-    
-    all_found = True
-    for name, pattern in java_elements:
-        if re.search(pattern, mock_code):
-            print(f"✓ {name} in mock data")
-        else:
-            print(f"✗ {name} NOT in mock data")
-            all_found = False
-    
-    return all_found
+    print("(skipped) Demo script removed; fixtures cover parsing instead.")
+    return True
 
 
 def validate_tree_sitter_usage():
     """Validate tree-sitter is used correctly."""
     print("\nValidating tree-sitter usage...")
-    
-    with open('java_graph_rag.py', 'r') as f:
-        script = f.read()
+
+    # Tree-sitter est maintenant réparti :
+    # - build du langage dans `tree_sitter_setup.py`
+    # - parser + query + `.captures()` dans `java_parser.py`
+    with open("core/parsing/tree_sitter_setup.py", "r", encoding="utf-8") as f:
+        setup_src = f.read()
+    with open("core/parsing/java_parser.py", "r", encoding="utf-8") as f:
+        parser_src = f.read()
+
+    script = setup_src + "\n" + parser_src
     
     checks = [
         ('tree-sitter import', r'import tree_sitter'),
@@ -155,8 +138,8 @@ def validate_tree_sitter_usage():
 def validate_langchain_retriever():
     """Validate the GraphEnrichedRetriever implementation."""
     print("\nValidating GraphEnrichedRetriever...")
-    
-    with open('java_graph_rag.py', 'r') as f:
+
+    with open("core/rag/retriever.py", "r", encoding="utf-8") as f:
         script = f.read()
     
     checks = [

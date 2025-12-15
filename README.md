@@ -28,24 +28,72 @@ A Retrieval-Augmented Generation (RAG) system for Java codebases that uses graph
 ### Installation
 
 ```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
 
 ### Usage
 
-Basic usage with mock data:
+#### Mode “application” (indexer + API)
+
+1) Configure l'environnement (au minimum `OPENAI_API_KEY`). Optionnellement, crée un fichier `open-deepwiki.yaml` à la racine (ex: scanner `./fixtures`).
+
+2) Indexer un codebase Java (écrit/complète la collection Chroma persistée sur disque) :
 
 ```bash
-python java_graph_rag.py
+python indexer.py
+# si tu ne veux pas activer le venv :
+./venv/bin/python indexer.py
 ```
 
-With custom OpenAI API endpoint:
+3) Démarrer l’API HTTP :
 
 ```bash
-export OPENAI_API_BASE="https://your-internal-api.example.com/v1"
-export OPENAI_API_KEY="your-api-key"
-python java_graph_rag.py
+uvicorn app:app --reload --port 8000
+# si tu ne veux pas activer le venv :
+./venv/bin/python -m uvicorn app:app --reload --port 8000
 ```
+
+4) Vérifier la santé :
+
+```bash
+curl http://127.0.0.1:8000/health
+```
+
+5) Interroger :
+
+```bash
+curl -X POST http://127.0.0.1:8000/query \
+   -H 'Content-Type: application/json' \
+   -d '{"query":"create user","k":4}'
+```
+
+6) Ask (chat + contexte RAG) :
+
+```bash
+curl -X POST http://127.0.0.1:8000/ask \
+   -H 'Content-Type: application/json' \
+   -d '{"question":"How do I create a new user?","k":4}'
+```
+
+7) Indexer un répertoire (scan récursif des `.java`) :
+
+```bash
+curl -X POST http://127.0.0.1:8000/index-directory \
+   -H 'Content-Type: application/json' \
+   -d '{"path":"./fixtures"}'
+```
+
+#### Notes
+
+- Le script historique `java_graph_rag.py` a été supprimé et refactorisé en modules rangés dans `core/`.
+- Les entrypoints “principaux” restent à la racine : `app.py`, `indexer.py`, `config.py`.
+
+- Les entrypoints “principaux” sont à la racine : `app.py`, `indexer.py`, `config.py`.
+- Le package `api/` existe comme shim/compatibilité (anciens imports/commandes).
+- Les routes HTTP sont définies dans `router/api.py` et incluses par `app.py`.
+- Les utilitaires Chroma/LangChain utilisés par l’API sont dans `utils/vectorstore.py`.
 
 ### How It Works
 

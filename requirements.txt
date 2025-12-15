@@ -1,5 +1,17 @@
 tree-sitter==0.21.3
-langchain==0.0.350
-chromadb==0.4.22
-openai==1.6.1
-tiktoken==0.5.2
+setuptools
+fastapi
+uvicorn[standard]
+PyYAML
+python-dotenv
+
+# LangChain (latest)
+langchain
+langchain-core
+langchain-community
+langchain-openai
+langchain-chroma
+
+# Vector DB + tokenization
+chromadb
+tiktoken

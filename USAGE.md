@@ -9,8 +9,13 @@ This document provides examples of how to use the Java Graph RAG system.
 Install dependencies:
 
 ```bash
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 ```
+
+Astuce (pour éviter les soucis conda/global) :
+- si tu n’actives pas le venv, préfixe les commandes avec `./venv/bin/python`.
 
 Set up environment variables (optional):
 
@@ -19,21 +24,90 @@ export OPENAI_API_KEY="your-api-key"
 export OPENAI_API_BASE="https://your-internal-api.example.com/v1"  # Optional custom URL
 ```
 
-## Running the Demo
+Optionnel: config YAML à la racine (par défaut `open-deepwiki.yaml`) :
 
-The script includes a complete demo with mock data:
-
-```bash
-python java_graph_rag.py
+```yaml
+debug_level: INFO
+java_codebase_dir: ./fixtures
 ```
 
-This will:
-1. Set up tree-sitter Java parser
-2. Parse mock Java code
-3. Extract method information (ID, signature, type, calls, code, Javadoc)
-4. Index methods into Chroma vector store
-5. Create a GraphEnrichedRetriever
-6. Run test queries demonstrating dependency enrichment
+## Mode “application” (indexer + API)
+
+### 1) Indexer un codebase Java
+
+Indexe tous les `.java` du répertoire configuré (`java_codebase_dir`) et persiste dans Chroma (par défaut `./chroma_db`).
+
+```bash
+python indexer.py
+# sans activer le venv :
+./venv/bin/python indexer.py
+```
+
+Variables utiles :
+- `CHROMA_PERSIST_DIR` (défaut `./chroma_db`)
+- `CHROMA_COLLECTION` (défaut `java_methods`)
+- `OPEN_DEEPWIKI_CONFIG` (chemin vers le YAML)
+
+### 2) Lancer l’API
+
+```bash
+uvicorn app:app --reload --port 8000
+# sans activer le venv :
+./venv/bin/python -m uvicorn app:app --reload --port 8000
+```
+
+Endpoints :
+- `GET /health`
+- `POST /query` avec `{ "query": "...", "k": 4 }`
+- `POST /ask` avec `{ "question": "...", "k": 4 }` (chat + contexte RAG)
+- `POST /index-directory` avec `{ "path": "..." }` (indexation récursive des `.java`)
+
+Implémentation : les routes sont dans `router/api.py` (montées par `app.py`).
+
+Utilitaires : la création du vectorstore Chroma et le chargement du `method_docs_map` sont dans `utils/vectorstore.py`.
+
+Exemple :
+
+```bash
+curl -X POST http://127.0.0.1:8000/query \
+    -H 'Content-Type: application/json' \
+    -d '{"query":"create user","k":4}'
+```
+
+Chat (réponse générée à partir du contexte RAG) :
+
+```bash
+curl -X POST http://127.0.0.1:8000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"question":"How do I create a new user?","k":4}'
+```
+
+Indexation récursive d’un répertoire (utile pour indexer un autre codebase que celui du YAML) :
+
+```bash
+curl -X POST http://127.0.0.1:8000/index-directory \
+        -H 'Content-Type: application/json' \
+        -d '{"path":"./fixtures"}'
+```
+
+Réponse (exemple) :
+
+```json
+{
+    "path": "/abs/path/to/fixtures",
+    "indexed_methods": 12,
+    "loaded_method_docs": 12
+}
+```
+
+Notes :
+- `path` peut être absolu, ou relatif (résolu depuis le répertoire de lancement du serveur).
+- Nécessite `OPENAI_API_KEY` (embeddings). Si absent : HTTP 503.
+
+## Mode “démo script” (historique)
+
+Le script tout-en-un `java_graph_rag.py` a été supprimé au profit de modules dédiés.
+Utilise plutôt les entrypoints de l’application (`indexer.py` + `app.py`).
 
 ## Code Components
 
@@ -42,7 +116,7 @@ This will:
 The `JavaParser` class uses tree-sitter to parse Java code:
 
 ```python
-from java_graph_rag import JavaParser
+from core.parsing.java_parser import JavaParser
 
 parser = JavaParser()
 methods = parser.parse_java_file(java_source_code)
@@ -62,8 +136,9 @@ The retriever performs two steps:
 2. Fetch documentation for called methods (dependencies)
 
 ```python
-from langchain.vectorstores import Chroma
-from java_graph_rag import GraphEnrichedRetriever, create_embeddings
+from langchain_chroma import Chroma
+from core.rag.retriever import GraphEnrichedRetriever
+from core.rag.embeddings import create_embeddings
 
 # Setup
 embeddings = create_embeddings()
@@ -96,7 +171,7 @@ for doc in results:
 Index parsed methods into the vector store:
 
 ```python
-from java_graph_rag import index_java_methods
+from core.rag.indexing import index_java_methods
 
 # Parse Java code
 parser = JavaParser()
@@ -111,7 +186,7 @@ method_docs_map = index_java_methods(methods, vectorstore)
 Configure a custom internal OpenAI API URL:
 
 ```python
-from java_graph_rag import create_embeddings
+from core.rag.embeddings import create_embeddings
 
 embeddings = create_embeddings(
     base_url="https://your-internal-api.example.com/v1"
@@ -122,7 +197,7 @@ Or via environment variable:
 
 ```bash
 export OPENAI_API_BASE="https://your-internal-api.example.com/v1"
-python java_graph_rag.py
+# puis lance l’API / l’indexer normalement
 ```
 
 ## Key Features Demonstrated
