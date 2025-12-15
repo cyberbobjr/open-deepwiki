@@ -21,11 +21,10 @@ Set up environment variables (optional):
 
 ```bash
 export OPENAI_API_KEY="your-api-key"
-export OPENAI_API_BASE="https://your-internal-api.example.com/v1"  # Optional custom URL
 
-# If you use a custom gateway (recommended), set these explicitly (no implicit fallback):
-export OPENAI_EMBEDDING_API_BASE="https://your-embeddings-gateway.example.com/v1"
-export OPENAI_CHAT_API_BASE="https://your-llm-gateway.example.com/v1"
+# If you use a custom gateway, set these explicitly:
+export OPENAI_EMBEDDING_API_BASE="https://your-internal-api.example.com/v1"
+export OPENAI_CHAT_API_BASE="https://your-internal-api.example.com/v1"
 
 # Also set explicit models (no implicit defaults):
 export OPENAI_EMBEDDING_MODEL="text-embedding-3-large"
@@ -65,7 +64,9 @@ debug_level: INFO
 java_codebase_dir: ./fixtures
 
 # Optional: LLM endpoints
-# If you need separate gateways, set these:
+# If you want a single URL for embeddings + chat, set only:
+# llm_api_base: https://your-internal-api.example.com/v1
+# If you need separate gateways, set overrides:
 # embeddings_api_base: https://your-embeddings-gateway.example.com/v1
 # chat_api_base: https://your-llm-gateway.example.com/v1
 
