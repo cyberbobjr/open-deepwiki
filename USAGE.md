@@ -35,6 +35,15 @@ export OPENAI_CHAT_MODEL="gpt-4o-mini"
 # Useful behind corporate proxies / custom PKI.
 export SSL_CERT_FILE="/path/to/root-ca-bundle.pem"
 export REQUESTS_CA_BUNDLE="/path/to/root-ca-bundle.pem"
+
+# Optional: outbound proxy for downloads + API calls
+# This is what you typically need for things like tiktoken encoding downloads.
+export HTTP_PROXY="http://proxy.mycorp.local:3128"
+export HTTPS_PROXY="http://proxy.mycorp.local:3128"
+export NO_PROXY="127.0.0.1,localhost,.mycorp.local"
+
+# Optional: control where tiktoken stores its cache/downloaded encoding files
+export TIKTOKEN_CACHE_DIR="/abs/path/to/tiktoken-cache"
 ```
 
 Optionnel: config YAML à la racine (par défaut `open-deepwiki.yaml`) :
@@ -50,6 +59,14 @@ java_codebase_dir: ./fixtures
 
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
 ssl_ca_file: /path/to/root-ca-bundle.pem
+
+# Optional: outbound proxy for downloads + API calls
+http_proxy: http://proxy.mycorp.local:3128
+https_proxy: http://proxy.mycorp.local:3128
+no_proxy: 127.0.0.1,localhost,.mycorp.local
+
+# Optional: tiktoken cache directory
+tiktoken_cache_dir: /abs/path/to/tiktoken-cache
 ```
 
 ## Mode “application” (indexer + API)

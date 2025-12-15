@@ -46,6 +46,17 @@ class AppConfig(BaseModel):
     # OpenSSL-based clients.
     ssl_ca_file: Optional[str] = None
 
+    # Outbound network proxy settings (for downloads and API calls).
+    # These map to standard environment variables respected by requests/urllib and
+    # many libraries (including tiktoken downloads via urllib).
+    http_proxy: Optional[str] = None
+    https_proxy: Optional[str] = None
+    no_proxy: Optional[str] = None
+
+    # Optional: where tiktoken stores downloaded/cached encoding files.
+    # Maps to `TIKTOKEN_CACHE_DIR`.
+    tiktoken_cache_dir: Optional[str] = None
+
 
 def apply_config_to_env(config: AppConfig) -> None:
     """Apply config values to environment variables if not already set.
@@ -79,6 +90,34 @@ def apply_config_to_env(config: AppConfig) -> None:
 
     if getattr(config, "chat_model", None) and not os.getenv("OPENAI_CHAT_MODEL"):
         os.environ["OPENAI_CHAT_MODEL"] = str(config.chat_model)
+
+    # Outbound proxy configuration.
+    # Respect already-set env vars so ops can override config.
+    http_proxy = getattr(config, "http_proxy", None)
+    if http_proxy:
+        if not os.getenv("http_proxy"):
+            os.environ["http_proxy"] = str(http_proxy)
+        if not os.getenv("HTTP_PROXY"):
+            os.environ["HTTP_PROXY"] = str(http_proxy)
+
+    https_proxy = getattr(config, "https_proxy", None)
+    if https_proxy:
+        if not os.getenv("https_proxy"):
+            os.environ["https_proxy"] = str(https_proxy)
+        if not os.getenv("HTTPS_PROXY"):
+            os.environ["HTTPS_PROXY"] = str(https_proxy)
+
+    no_proxy = getattr(config, "no_proxy", None)
+    if no_proxy:
+        if not os.getenv("no_proxy"):
+            os.environ["no_proxy"] = str(no_proxy)
+        if not os.getenv("NO_PROXY"):
+            os.environ["NO_PROXY"] = str(no_proxy)
+
+    # tiktoken cache directory (helps in locked-down environments).
+    tiktoken_cache_dir = getattr(config, "tiktoken_cache_dir", None)
+    if tiktoken_cache_dir and not os.getenv("TIKTOKEN_CACHE_DIR"):
+        os.environ["TIKTOKEN_CACHE_DIR"] = str(tiktoken_cache_dir)
 
     # SSL CA bundle override for outbound HTTPS.
     # Prefer respecting already-set env vars so ops can override config.

@@ -51,3 +51,17 @@ llm_api_key: null # mets la clé ici, ou préfère l’env `OPENAI_API_KEY`
 # Useful behind corporate proxies / custom PKI.
 # If set, it is applied to: SSL_CERT_FILE, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE
 ssl_ca_file: null
+
+# Outbound proxies (downloads + API calls)
+# These map to standard env vars: HTTP_PROXY/HTTPS_PROXY/NO_PROXY (also lower-case variants).
+# Example:
+# http_proxy: http://proxy.mycorp.local:3128
+# https_proxy: http://proxy.mycorp.local:3128
+# no_proxy: 127.0.0.1,localhost,.mycorp.local
+http_proxy: null
+https_proxy: null
+no_proxy: null
+
+# Optional: tiktoken cache directory (helps if encodings must be downloaded through proxy)
+# Maps to: TIKTOKEN_CACHE_DIR
+tiktoken_cache_dir: null
