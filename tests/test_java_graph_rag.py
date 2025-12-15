@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 # Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
 class TestJavaParsingAndAnalysis(unittest.TestCase):
@@ -24,7 +24,7 @@ class TestJavaParsingAndAnalysis(unittest.TestCase):
 
     def _read_fixture(self) -> str:
         fixture_path = os.path.join(
-            os.path.dirname(os.path.abspath(__file__)),
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
             "fixtures",
             "SampleService.java",
         )
@@ -133,7 +133,11 @@ class TestJavaParsingAndAnalysis(unittest.TestCase):
         from api.indexer import scan_java_methods
 
         parser = JavaParser()
-        methods = scan_java_methods("./fixtures", parser)
+        fixtures_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+            "fixtures",
+        )
+        methods = scan_java_methods(fixtures_path, parser)
 
         self.assertTrue(methods)
         signatures = [m.signature for m in methods]
