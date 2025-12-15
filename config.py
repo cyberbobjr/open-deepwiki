@@ -15,6 +15,10 @@ class AppConfig(BaseModel):
     debug_level: str = "INFO"
     java_codebase_dir: str = "./"
 
+    # Optional project scope name.
+    # When set, all indexed documents get metadata.project=<project_name>.
+    project_name: Optional[str] = None
+
     # FastAPI / Uvicorn
     api_port: int = 8000
 
@@ -27,6 +31,16 @@ class AppConfig(BaseModel):
     # Chroma enables anonymized telemetry by default; set this to False to opt out.
     # This maps to the `ANONYMIZED_TELEMETRY` environment variable.
     chroma_anonymized_telemetry: bool = False
+
+    # Indexing (optional)
+    # If true, indexing can add one extra "file summary" document per Java file.
+    # This summary is heuristic (no LLM required) and is meant to help RAG.
+    index_file_summaries: bool = False
+
+    # Agent persistence (LangGraph checkpointer)
+    # Supported values: "sqlite".
+    checkpointer_backend: str = "sqlite"
+    checkpointer_sqlite_path: str = "./checkpoints.sqlite3"
 
     # LLM configuration (for embeddings + chat).
     # This repo currently uses embeddings (Chroma + OpenAIEmbeddings) and may

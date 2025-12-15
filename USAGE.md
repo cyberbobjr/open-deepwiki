@@ -14,8 +14,8 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Astuce (pour éviter les soucis conda/global) :
-- si tu n’actives pas le venv, préfixe les commandes avec `./venv/bin/python`.
+Tip (to avoid conda/global issues):
+- If you don’t activate the venv, prefix commands with `./venv/bin/python`.
 
 Set up environment variables (optional):
 
@@ -57,11 +57,23 @@ export TIKTOKEN_CACHE_DIR="/abs/path/to/tiktoken-cache"
 # Configure via YAML (recommended). There is no dedicated env var for this in open-deepwiki.
 ```
 
-Optionnel: config YAML à la racine (par défaut `open-deepwiki.yaml`) :
+Optional: YAML config at the repo root (default `open-deepwiki.yaml`):
 
 ```yaml
 debug_level: INFO
 java_codebase_dir: ./fixtures
+
+# Optional: project scope name
+# When set, indexed docs include metadata.project=<project_name> and the API uses it as default scope.
+project_name: my-project
+
+# Optional: index one heuristic summary document per Java file (helps file-level RAG)
+index_file_summaries: true
+
+# Optional: persist /ask conversation state via checkpointer
+# The API uses this to keep agent memory across requests (keyed by session_id).
+checkpointer_backend: sqlite
+checkpointer_sqlite_path: ./checkpoints.sqlite3
 
 # Optional: LLM endpoints
 # If you want a single URL for embeddings + chat, set only:
@@ -97,66 +109,71 @@ tiktoken_prefetch_encodings:
     - cl100k_base
 ```
 
-## Mode “application” (indexer + API)
+## Application mode (indexer + API)
 
-### 1) Indexer un codebase Java
+### 1) Index a Java codebase
 
-Indexe tous les `.java` du répertoire configuré (`java_codebase_dir`) et persiste dans Chroma (par défaut `./chroma_db`).
+Indexes all `.java` files under the configured directory (`java_codebase_dir`) and persists to Chroma (default `./chroma_db`).
 
 ```bash
 python indexer.py
-# sans activer le venv :
+# without activating the venv:
 ./venv/bin/python indexer.py
 ```
 
-Variables utiles :
-- `CHROMA_PERSIST_DIR` (défaut `./chroma_db`)
-- `CHROMA_COLLECTION` (défaut `java_methods`)
-- `OPEN_DEEPWIKI_CONFIG` (chemin vers le YAML)
+Useful variables:
+- `CHROMA_PERSIST_DIR` (default `./chroma_db`)
+- `CHROMA_COLLECTION` (default `java_methods`)
+- `OPEN_DEEPWIKI_CONFIG` (path to the YAML)
 
-### 2) Lancer l’API
+### 2) Run the API
 
 ```bash
 uvicorn app:app --reload --port 8000
-# sans activer le venv :
+# without activating the venv:
 ./venv/bin/python -m uvicorn app:app --reload --port 8000
 ```
 
 Endpoints :
 - `GET /health`
-- `POST /query` avec `{ "query": "...", "k": 4 }`
-- `POST /ask` avec `{ "question": "...", "k": 4 }` (chat + contexte RAG)
-- `POST /index-directory` avec `{ "path": "..." }` (indexation récursive des `.java`)
+- `POST /query` with `{ "query": "...", "k": 4, "project": "..." }` (optional project)
+- `POST /ask` with `{ "question": "...", "k": 4, "project": "...", "session_id": "..." }` (chat + history)
+- `POST /index-directory` with `{ "path": "...", "project": "...", "reindex": true }` (recursive `.java` indexing)
+- `GET /projects` (list indexed project scopes)
 
-Implémentation : les routes sont dans `router/api.py` (montées par `app.py`).
+Implementation: routes are in `router/api.py` (mounted by `app.py`).
 
-Utilitaires : la création du vectorstore Chroma et le chargement du `method_docs_map` sont dans `utils/vectorstore.py`.
+Utilities: Chroma vectorstore creation and method doc loading are in `utils/vectorstore.py`.
 
-Exemple :
+Example:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/query \
     -H 'Content-Type: application/json' \
-    -d '{"query":"create user","k":4}'
+    -d '{"query":"create user","k":4,"project":"my-project"}'
 ```
 
-Chat (réponse générée à partir du contexte RAG) :
 
 ```bash
 curl -X POST http://127.0.0.1:8000/ask \
     -H 'Content-Type: application/json' \
-    -d '{"question":"How do I create a new user?","k":4}'
+    -d '{"question":"How do I create a new user?","k":4,"project":"my-project"}'
+
+# Continue the conversation with a session_id (returned in the previous response)
+curl -X POST http://127.0.0.1:8000/ask \
+    -H 'Content-Type: application/json' \
+    -d '{"question":"Where is validation done?","k":4,"project":"my-project","session_id":"<paste-session-id>"}'
 ```
 
-Indexation récursive d’un répertoire (utile pour indexer un autre codebase que celui du YAML) :
+Recursive directory indexing (useful to index a different codebase than the one in YAML):
 
 ```bash
 curl -X POST http://127.0.0.1:8000/index-directory \
         -H 'Content-Type: application/json' \
-        -d '{"path":"./fixtures"}'
+    -d '{"path":"./fixtures","project":"my-project","reindex":true,"include_file_summaries":true}'
 ```
 
-Réponse (exemple) :
+Example response:
 
 ```json
 {
@@ -167,13 +184,13 @@ Réponse (exemple) :
 ```
 
 Notes :
-- `path` peut être absolu, ou relatif (résolu depuis le répertoire de lancement du serveur).
-- Nécessite `OPENAI_API_KEY` (embeddings). Si absent : HTTP 503.
+- `path` can be absolute or relative (resolved from the server working directory).
+- Requires `OPENAI_API_KEY` (embeddings). If missing: HTTP 503.
 
-## Mode “démo script” (historique)
+## Legacy demo script mode
 
-Le script tout-en-un `java_graph_rag.py` a été supprimé au profit de modules dédiés.
-Utilise plutôt les entrypoints de l’application (`indexer.py` + `app.py`).
+The all-in-one `java_graph_rag.py` script has been removed in favor of dedicated modules.
+Use the application entrypoints instead (`indexer.py` + `app.py`).
 
 ## Code Components
 
@@ -262,8 +279,9 @@ embeddings = create_embeddings(
 Or via environment variable:
 
 ```bash
-export OPENAI_API_BASE="https://your-internal-api.example.com/v1"
-# puis lance l’API / l’indexer normalement
+export OPENAI_EMBEDDING_API_BASE="https://your-internal-api.example.com/v1"
+export OPENAI_CHAT_API_BASE="https://your-internal-api.example.com/v1"
+# then start the API / indexer normally
 ```
 
 ## Key Features Demonstrated

@@ -37,64 +37,77 @@ pip install -r requirements.txt
 
 #### Mode “application” (indexer + API)
 
-1) Configure l'environnement (au minimum `OPENAI_API_KEY`). Optionnellement, crée un fichier `open-deepwiki.yaml` à la racine (ex: scanner `./fixtures`).
+1) Configure your environment (at minimum `OPENAI_API_KEY`). Optionally, create an `open-deepwiki.yaml` file at the repo root (e.g., scan `./fixtures`).
 
-2) Indexer un codebase Java (écrit/complète la collection Chroma persistée sur disque) :
+2) Index a Java codebase (writes/appends to the persisted Chroma collection on disk):
 
 ```bash
 python indexer.py
-# si tu ne veux pas activer le venv :
+# if you don't want to activate the venv:
 ./venv/bin/python indexer.py
 ```
 
-3) Démarrer l’API HTTP :
+3) Start the HTTP API:
 
 ```bash
-# Option A (recommandé si tu veux que le port vienne de `open-deepwiki.yaml`) :
+# Option A (recommended if you want the port from `open-deepwiki.yaml`):
 ./venv/bin/python app.py
 
-# Option B (mode dev reload) :
+# Option B (dev reload mode):
 uvicorn app:app --reload --port 8000
-# si tu ne veux pas activer le venv :
+# if you don't want to activate the venv:
 ./venv/bin/python -m uvicorn app:app --reload --port 8000
 ```
 
-4) Vérifier la santé :
+4) Check health:
 
 ```bash
 curl http://127.0.0.1:8000/health
 ```
 
-5) Interroger :
+API routes:
+
+- `GET /health`
+- `POST /query`
+- `POST /ask`
+- `POST /index-directory`
+- `GET /projects`
+
+5) Query:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/query \
    -H 'Content-Type: application/json' \
-   -d '{"query":"create user","k":4}'
+   -d '{"query":"create user","k":4,"project":"my-project"}'
 ```
 
-6) Ask (chat + contexte RAG) :
+6) Ask:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/ask \
    -H 'Content-Type: application/json' \
-   -d '{"question":"How do I create a new user?","k":4}'
+   -d '{"question":"How do I create a new user?","k":4,"project":"my-project"}'
+
+# The `session_id` field is returned in the response; reuse it to keep history.
+curl -X POST http://127.0.0.1:8000/ask \
+   -H 'Content-Type: application/json' \
+   -d '{"question":"Where is validation done?","k":4,"project":"my-project","session_id":"<paste-session-id>"}'
 ```
 
-7) Indexer un répertoire (scan récursif des `.java`) :
+7) Index a directory (recursive scan of `.java`):
 
 ```bash
 curl -X POST http://127.0.0.1:8000/index-directory \
    -H 'Content-Type: application/json' \
-   -d '{"path":"./fixtures"}'
+   -d '{"path":"./fixtures","project":"my-project","reindex":true,"include_file_summaries":true}'
 ```
 
 #### Notes
 
-- Le script historique `java_graph_rag.py` a été supprimé et refactorisé en modules rangés dans `core/`.
-- Les entrypoints “principaux” restent à la racine : `app.py`, `indexer.py`, `config.py`.
-- Les routes HTTP sont définies dans `router/api.py` et incluses par `app.py`.
-- Les utilitaires Chroma/LangChain utilisés par l’API sont dans `utils/vectorstore.py`.
+- The legacy `java_graph_rag.py` script has been removed and refactored into modules under `core/`.
+- The main entrypoints remain at the repo root: `app.py`, `indexer.py`, `config.py`.
+- HTTP routes are defined in `router/api.py` and included by `app.py`.
+- Chroma/LangChain helpers used by the API live in `utils/vectorstore.py`.
 
 ### How It Works
 

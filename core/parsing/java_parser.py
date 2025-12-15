@@ -16,6 +16,9 @@ class JavaMethod:
     calls: List[str]
     code: str
     javadoc: Optional[str] = None
+    # Optional context filled by higher-level scanners (e.g. indexer scanning a directory)
+    file_path: Optional[str] = None
+    project: Optional[str] = None
 
 
 class JavaParser:

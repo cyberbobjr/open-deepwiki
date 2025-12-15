@@ -38,15 +38,25 @@ def create_app() -> FastAPI:
             prefetch_tiktoken_encodings(config)
 
             vectorstore = _get_vectorstore()
-            method_docs_map = _load_method_docs_map(vectorstore)
+            default_project = getattr(config, "project_name", None) or os.getenv("OPEN_DEEPWIKI_PROJECT")
+            method_docs_map = _load_method_docs_map(vectorstore, project=default_project)
 
             fastapi_app.state.vectorstore = vectorstore
+            # Scoped caches
+            fastapi_app.state.method_docs_maps = {default_project: method_docs_map}
+            fastapi_app.state.retrievers = {
+                default_project: GraphEnrichedRetriever(
+                    vectorstore=vectorstore,
+                    method_docs_map=method_docs_map,
+                    k=int(os.getenv("RAG_K", "4")),
+                    project=default_project,
+                )
+            }
+
+            # Backward-compatible single retriever/map
             fastapi_app.state.method_docs_map = method_docs_map
-            fastapi_app.state.retriever = GraphEnrichedRetriever(
-                vectorstore=vectorstore,
-                method_docs_map=method_docs_map,
-                k=int(os.getenv("RAG_K", "4")),
-            )
+            fastapi_app.state.retriever = fastapi_app.state.retrievers[default_project]
+            fastapi_app.state.default_project = default_project
         except Exception as e:  # pragma: no cover
             logging.getLogger(__name__).exception("Failed to initialize vectorstore/retriever")
             fastapi_app.state.startup_error = str(e)

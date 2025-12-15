@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from langchain_chroma import Chroma
 from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
@@ -16,20 +16,29 @@ class GraphEnrichedRetriever(BaseRetriever):
 
     vectorstore: Chroma
     k: int = 4
+    project: Optional[str] = None
     method_docs_map: Dict[str, Document] = Field(default_factory=dict)
 
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> List[Document]:
-        initial_docs = self.vectorstore.similarity_search(query, k=self.k)
+        search_filter: Optional[Dict[str, Any]] = None
+        if self.project is not None:
+            search_filter = {"project": self.project}
+
+        try:
+            initial_docs = self.vectorstore.similarity_search(query, k=self.k, filter=search_filter)
+        except TypeError:
+            initial_docs = self.vectorstore.similarity_search(query, k=self.k)
 
         enriched_docs: List[Document] = []
         seen_ids = set()
 
         for doc in initial_docs:
-            if doc.metadata.get("id") not in seen_ids:
+            doc_key = (doc.metadata or {}).get("scoped_id") or (doc.metadata or {}).get("id")
+            if doc_key and doc_key not in seen_ids:
                 enriched_docs.append(doc)
-                seen_ids.add(doc.metadata.get("id"))
+                seen_ids.add(doc_key)
 
             calls_meta: Any = doc.metadata.get("calls", [])
             if isinstance(calls_meta, str):
@@ -40,17 +49,19 @@ class GraphEnrichedRetriever(BaseRetriever):
             for call_name in calls:
                 for method_id, dep_doc in self.method_docs_map.items():
                     if call_name.lower() in dep_doc.metadata.get("signature", "").lower():
-                        if method_id not in seen_ids:
+                        dep_key = (dep_doc.metadata or {}).get("scoped_id") or (dep_doc.metadata or {}).get("id") or method_id
+                        if dep_key not in seen_ids:
                             enriched_doc = Document(
                                 page_content=f"[DEPENDENCY] {dep_doc.page_content}",
                                 metadata={
                                     **(dep_doc.metadata or {}),
                                     "is_dependency": True,
-                                    "called_from": doc.metadata.get("id"),
+                                    "called_from": (doc.metadata or {}).get("scoped_id")
+                                    or (doc.metadata or {}).get("id"),
                                 },
                             )
                             enriched_docs.append(enriched_doc)
-                            seen_ids.add(method_id)
+                            seen_ids.add(dep_key)
 
         return enriched_docs
 

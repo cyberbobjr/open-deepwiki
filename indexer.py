@@ -11,7 +11,7 @@ from langchain_chroma import Chroma
 from config import AppConfig, apply_config_to_env, configure_logging, load_config, prefetch_tiktoken_encodings
 from core.parsing.java_parser import JavaMethod, JavaParser
 from core.rag.embeddings import create_embeddings
-from core.rag.indexing import index_java_methods
+from core.rag.indexing import index_java_file_summaries, index_java_methods
 from core.parsing.tree_sitter_setup import setup_java_language
 
 
@@ -49,7 +49,11 @@ def scan_java_methods(codebase_dir: str, parser: JavaParser) -> List[JavaMethod]
             continue
 
         try:
-            methods.extend(parser.parse_java_file(java_code))
+            file_methods = parser.parse_java_file(java_code)
+            for m in file_methods:
+                # Enrich parsed method objects with scan context.
+                m.file_path = str(path)
+            methods.extend(file_methods)
         except Exception as e:
             logger.warning("Skipping unparsable file %s: %s", path, e)
             continue
@@ -61,7 +65,7 @@ def _get_vectorstore() -> Chroma:
     persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
     collection_name = os.getenv("CHROMA_COLLECTION", "java_methods")
 
-    base_url = os.getenv("OPENAI_API_BASE")
+    base_url = os.getenv("OPENAI_EMBEDDING_API_BASE")
     embeddings = create_embeddings(base_url)
 
     return Chroma(
@@ -81,12 +85,20 @@ def index_codebase(config: AppConfig) -> int:
     parser = JavaParser()
     methods = scan_java_methods(config.java_codebase_dir, parser)
 
+    project = getattr(config, "project_name", None) or os.getenv("OPEN_DEEPWIKI_PROJECT")
+    if project:
+        for m in methods:
+            m.project = project
+
     if not methods:
         logger.warning("No Java methods found; nothing to index.")
         return 0
 
     vectorstore = _get_vectorstore()
     method_docs_map = index_java_methods(methods, vectorstore)
+
+    if bool(getattr(config, "index_file_summaries", False)):
+        index_java_file_summaries(methods, vectorstore)
 
     persist = getattr(vectorstore, "persist", None)
     if callable(persist):

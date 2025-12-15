@@ -18,6 +18,19 @@ chroma_anonymized_telemetry: false
 # Root directory to scan/index for Java code.
 # Example: /abs/path/to/repo or ./fixtures
 java_codebase_dir: ./fixtures
+
+# Optional project scope name.
+# When set, indexed docs include metadata.project=<project_name> and API calls can
+# omit the `project` parameter to use this default.
+project_name: null
+
+# Optional: index one heuristic summary document per Java file.
+# Helps RAG answer file-level questions without reading every method.
+index_file_summaries: false
+
+# Optional: in-memory session history for the /ask endpoint.
+# Max number of messages stored per (project, session_id).
+session_history_max_messages: 20
 # LLM (embeddings + chat)
 # Ces champs alimentent automatiquement des variables d'env compatibles OpenAI/LangChain :
 # - llm_api_key       -> OPENAI_API_KEY
@@ -82,3 +95,9 @@ tiktoken_cache_dir: null
 #   - o200k_base
 tiktoken_prefetch: false
 tiktoken_prefetch_encodings: null
+
+# Agent persistence (LangGraph checkpointer)
+# Persists agent state (including message history + tool call traces) across restarts.
+# Supported backends: sqlite
+checkpointer_backend: sqlite
+checkpointer_sqlite_path: ./checkpoints.sqlite3

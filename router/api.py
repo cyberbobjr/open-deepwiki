@@ -6,7 +6,9 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from langchain_core.messages import HumanMessage, SystemMessage
+import uuid
+
+from langchain_core.messages import AIMessage, HumanMessage
 
 from core.documentation.postimplementation_log import get_log_dir_from_env, safe_log_filename
 
@@ -17,6 +19,10 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1)
     k: int = Field(4, ge=1, le=50)
+    project: Optional[str] = Field(
+        default=None,
+        description="Project scope name. If set, retrieval is restricted to documents indexed with the same project.",
+    )
 
 
 class QueryResult(BaseModel):
@@ -32,11 +38,25 @@ class QueryResult(BaseModel):
 
 class IndexDirectoryRequest(BaseModel):
     path: str = Field(..., min_length=1, description="Chemin du répertoire à indexer (scan récursif des .java).")
+    project: Optional[str] = Field(
+        default=None,
+        description="Project scope name attached to indexed docs. Defaults to config.project_name when set.",
+    )
+    reindex: bool = Field(
+        default=False,
+        description="If true, deletes existing docs in this scope before indexing.",
+    )
+    include_file_summaries: Optional[bool] = Field(
+        default=None,
+        description="If true, indexes one summary document per Java file (heuristic, no LLM). Defaults to config.index_file_summaries.",
+    )
 
 
 class IndexDirectoryResponse(BaseModel):
     path: str
+    project: Optional[str] = None
     indexed_methods: int
+    indexed_file_summaries: int = 0
     loaded_method_docs: int
 
 
@@ -93,24 +113,132 @@ class PostImplementationLogReadResponse(BaseModel):
     content: str
 
 
+@router.get("/projects", response_model=List[str])
+def list_indexed_projects(request: Request) -> List[str]:
+    """List distinct indexed project scopes.
+
+    Returns only explicit, non-empty project names (docs without a project scope are omitted).
+    """
+
+    if getattr(request.app.state, "startup_error", None):
+        raise HTTPException(
+            status_code=503, detail=f"Startup failed: {request.app.state.startup_error}"
+        )
+
+    vectorstore = getattr(request.app.state, "vectorstore", None)
+    if vectorstore is None:
+        return []
+
+    collection = getattr(vectorstore, "_collection", None)
+    if collection is None:
+        return []
+
+    try:
+        payload = collection.get(include=["metadatas"])
+    except TypeError:
+        payload = collection.get()
+
+    metadatas = (payload or {}).get("metadatas") or []
+    projects = set()
+    for meta in metadatas:
+        if not isinstance(meta, dict):
+            continue
+        value = meta.get("project")
+        if value is None:
+            continue
+        name = str(value).strip()
+        if name:
+            projects.add(name)
+
+    return sorted(projects)
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1)
     k: int = Field(4, ge=1, le=50)
+    project: Optional[str] = Field(
+        default=None,
+        description="Project scope name. If set, retrieval is restricted to documents indexed with the same project.",
+    )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Conversation session id. If omitted, a new session id is created and returned.",
+    )
 
 
 class AskResponse(BaseModel):
+    session_id: str
+    project: Optional[str] = None
     answer: str
     context: List[QueryResult]
+
+
+def _resolve_project(request: Request, explicit: Optional[str]) -> Optional[str]:
+    if explicit is not None and str(explicit).strip() != "":
+        return str(explicit).strip()
+    config = getattr(request.app.state, "config", None)
+    cfg_project = getattr(config, "project_name", None)
+    if cfg_project:
+        return str(cfg_project)
+    env_project = os.getenv("OPEN_DEEPWIKI_PROJECT")
+    if env_project:
+        return str(env_project)
+    return None
+
+
+def _get_scoped_retriever(request: Request, *, project: Optional[str]):
+    """Return (and cache) a scoped retriever + scoped method_docs_map."""
+
+    from utils.vectorstore import _load_method_docs_map
+    from core.rag.retriever import GraphEnrichedRetriever
+
+    if not hasattr(request.app.state, "retrievers"):
+        request.app.state.retrievers = {}
+    if not hasattr(request.app.state, "method_docs_maps"):
+        request.app.state.method_docs_maps = {}
+
+    retrievers: Dict[Optional[str], Any] = request.app.state.retrievers
+    maps: Dict[Optional[str], Dict[str, Any]] = request.app.state.method_docs_maps
+
+    vectorstore = getattr(request.app.state, "vectorstore")
+
+    if project not in maps:
+        maps[project] = _load_method_docs_map(vectorstore, project=project)
+
+    if project not in retrievers:
+        retrievers[project] = GraphEnrichedRetriever(
+            vectorstore=vectorstore,
+            method_docs_map=maps[project],
+            k=int(os.getenv("RAG_K", "4")),
+            project=project,
+        )
+    else:
+        retrievers[project].vectorstore = vectorstore
+        retrievers[project].method_docs_map = maps[project]
+        retrievers[project].project = project
+
+    return retrievers[project]
+
+
 
 
 @router.get("/health")
 def health(request: Request) -> Dict[str, Any]:
     config = getattr(request.app.state, "config", None)
+    default_project = getattr(config, "project_name", None) or os.getenv("OPEN_DEEPWIKI_PROJECT")
+    # Prefer scoped caches when present.
+    method_maps = getattr(request.app.state, "method_docs_maps", None) or {}
+    default_loaded = (
+        len(method_maps.get(default_project) or {}) if isinstance(method_maps, dict) else 0
+    )
+    legacy_loaded = len(getattr(request.app.state, "method_docs_map", {}) or {})
     return {
         "status": "ok",
         "config_path": getattr(request.app.state, "config_path", "open-deepwiki.yaml"),
         "debug_level": getattr(config, "debug_level", "INFO"),
         "java_codebase_dir": getattr(config, "java_codebase_dir", "./"),
+        "project_name": getattr(config, "project_name", None),
+        "default_project": default_project,
         "javadoc_min_meaningful_lines": getattr(config, "javadoc_min_meaningful_lines", 3),
         "chroma_anonymized_telemetry": getattr(config, "chroma_anonymized_telemetry", False),
         "startup_error": getattr(request.app.state, "startup_error", None),
@@ -125,7 +253,7 @@ def health(request: Request) -> Dict[str, Any]:
         "tiktoken_prefetch_encodings": getattr(config, "tiktoken_prefetch_encodings", None),
         "chroma_persist_dir": os.getenv("CHROMA_PERSIST_DIR", "./chroma_db"),
         "chroma_collection": os.getenv("CHROMA_COLLECTION", "java_methods"),
-        "method_docs_loaded": len(getattr(request.app.state, "method_docs_map", {}) or {}),
+        "method_docs_loaded": default_loaded or legacy_loaded,
     }
 
 
@@ -141,7 +269,8 @@ def query(request: Request, req: QueryRequest) -> List[QueryResult]:
             detail="OPENAI_API_KEY is not set; cannot query embeddings-backed vector search.",
         )
 
-    retriever = request.app.state.retriever
+    project = _resolve_project(request, req.project)
+    retriever = _get_scoped_retriever(request, project=project)
     retriever.k = req.k
 
     docs = retriever.get_relevant_documents(req.query)
@@ -176,7 +305,8 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
             detail="OPENAI_API_KEY is not set; cannot run chat completion.",
         )
 
-    retriever = request.app.state.retriever
+    project = _resolve_project(request, req.project)
+    retriever = _get_scoped_retriever(request, project=project)
     retriever.k = req.k
     docs = retriever.get_relevant_documents(req.question)
 
@@ -210,13 +340,16 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
         header_text = " | ".join(header) if header else "context"
         context_blocks.append(f"### {header_text}\n{doc.page_content}")
 
-    from utils.chat import create_chat_model
+    from utils.agent_factory import create_codebase_agent
+    from utils.sqlite_checkpointer import SqliteCheckpointSaver
 
-    llm = create_chat_model()
     system_prompt = (
         "You are a senior engineer assistant for a Java codebase. "
-        "Answer the user's question using ONLY the provided context. "
-        "If the context is insufficient, say so explicitly and ask for the missing detail. "
+        "Prefer answering using the provided Context section. "
+        "If the context is insufficient, you MAY use tools to inspect the codebase (browse_dir/get_file_contents/vector_search) "
+        "to gather missing details. "
+        "Conversation history is for continuity only. "
+        "If you still cannot answer, say what you need next. "
         "Keep the answer concise and actionable."
     )
     user_prompt = "\n\n".join(
@@ -227,16 +360,72 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
         ]
     )
 
+    # Agent cache (per sandbox root).
+    if not hasattr(request.app.state, "code_agents"):
+        request.app.state.code_agents = {}
+
+    # Checkpointer cache (per sqlite path).
+    if not hasattr(request.app.state, "checkpointers"):
+        request.app.state.checkpointers = {}
+
+    session_id = req.session_id or uuid.uuid4().hex
+
+    config = getattr(request.app.state, "config", None)
+    code_root = getattr(config, "java_codebase_dir", "./") or "./"
+    code_root_key = str(Path(code_root).expanduser().resolve())
+
+    cp_backend = str(getattr(config, "checkpointer_backend", "sqlite") or "sqlite").lower()
+    if cp_backend != "sqlite":
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unsupported checkpointer_backend: {cp_backend!r} (supported: 'sqlite')",
+        )
+    cp_path = str(getattr(config, "checkpointer_sqlite_path", "./checkpoints.sqlite3") or "./checkpoints.sqlite3")
+    cp_path_key = str(Path(cp_path).expanduser().resolve())
+
+    checkpointers: Dict[str, Any] = request.app.state.checkpointers
+    if cp_path_key not in checkpointers:
+        checkpointers[cp_path_key] = SqliteCheckpointSaver(sqlite_path=cp_path_key)
+    checkpointer = checkpointers[cp_path_key]
+
+    agents: Dict[str, Any] = request.app.state.code_agents
+    agent_key = f"{code_root_key}::{project or ''}"
+    if agent_key not in agents:
+        agents[agent_key] = create_codebase_agent(
+            root_dir=code_root_key,
+            retriever=retriever,
+            checkpointer=checkpointer,
+            debug=(str(getattr(config, "debug_level", "")).upper() == "DEBUG"),
+            system_prompt=system_prompt,
+        )
+
+    agent = agents[agent_key]
+
     try:
-        response = llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=user_prompt)])
+        agent_result = agent.invoke(
+            {"messages": [HumanMessage(content=user_prompt)]},
+            {
+                "configurable": {
+                    "thread_id": session_id,
+                    "checkpoint_ns": project or "",
+                }
+            },
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat request failed: {e}")
 
-    answer_text = getattr(response, "content", None)
-    if not isinstance(answer_text, str):
-        answer_text = str(response)
+    messages = (agent_result or {}).get("messages", []) if isinstance(agent_result, dict) else []
+    last_ai = next((m for m in reversed(messages) if isinstance(m, AIMessage)), None)
+    answer_text = getattr(last_ai, "content", None)
+    if not isinstance(answer_text, str) or not answer_text.strip():
+        answer_text = str(last_ai or agent_result)
 
-    return AskResponse(answer=answer_text, context=context_results)
+    return AskResponse(
+        session_id=session_id,
+        project=project,
+        answer=answer_text,
+        context=context_results,
+    )
 
 
 @router.post("/index-directory", response_model=IndexDirectoryResponse)
@@ -261,15 +450,20 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
     # Imports ici pour garder le module léger au chargement.
     from indexer import scan_java_methods
     from core.parsing.java_parser import JavaParser
-    from core.rag.indexing import index_java_methods
+    from core.rag.indexing import index_java_file_summaries, index_java_methods
     from core.parsing.tree_sitter_setup import setup_java_language
-    from utils.vectorstore import _get_vectorstore, _load_method_docs_map
+    from utils.vectorstore import _get_vectorstore, _load_method_docs_map, delete_scoped_documents
     from core.rag.retriever import GraphEnrichedRetriever
+
+    project = _resolve_project(request, req.project)
 
     try:
         setup_java_language()
         parser = JavaParser()
         methods = scan_java_methods(str(directory), parser)
+        if project:
+            for m in methods:
+                m.project = project
     except HTTPException:
         raise
     except Exception as e:
@@ -279,7 +473,9 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
         # Rien à indexer, mais on renvoie une réponse cohérente.
         return IndexDirectoryResponse(
             path=str(directory),
+            project=project,
             indexed_methods=0,
+            indexed_file_summaries=0,
             loaded_method_docs=len(getattr(request.app.state, "method_docs_map", {}) or {}),
         )
 
@@ -292,29 +488,46 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
             raise HTTPException(status_code=500, detail=f"Failed to initialize vectorstore: {e}")
 
     try:
+        if bool(req.reindex):
+            delete_scoped_documents(vectorstore, project=project)
+
         indexed_map = index_java_methods(methods, vectorstore)
+
+        config = getattr(request.app.state, "config", None)
+        include_summaries = (
+            bool(req.include_file_summaries)
+            if req.include_file_summaries is not None
+            else bool(getattr(config, "index_file_summaries", False))
+        )
+        indexed_summaries = 0
+        if include_summaries:
+            indexed_summaries = len(index_java_file_summaries(methods, vectorstore))
+
         persist = getattr(vectorstore, "persist", None)
         if callable(persist):
             persist()
 
-        # Recharge tout pour que l'enrichissement par graphe voit les nouvelles entrées.
-        method_docs_map = _load_method_docs_map(vectorstore)
-        request.app.state.method_docs_map = method_docs_map
+        # Refresh caches for this project scope.
+        method_docs_map = _load_method_docs_map(vectorstore, project=project)
 
-        retriever = getattr(request.app.state, "retriever", None)
-        if retriever is None:
-            request.app.state.retriever = GraphEnrichedRetriever(
-                vectorstore=vectorstore,
-                method_docs_map=method_docs_map,
-                k=int(os.getenv("RAG_K", "4")),
-            )
-        else:
-            retriever.vectorstore = vectorstore
-            retriever.method_docs_map = method_docs_map
+        if not hasattr(request.app.state, "method_docs_maps"):
+            request.app.state.method_docs_maps = {}
+        request.app.state.method_docs_maps[project] = method_docs_map
+
+        if not hasattr(request.app.state, "retrievers"):
+            request.app.state.retrievers = {}
+        request.app.state.retrievers[project] = GraphEnrichedRetriever(
+            vectorstore=vectorstore,
+            method_docs_map=method_docs_map,
+            k=int(os.getenv("RAG_K", "4")),
+            project=project,
+        )
 
         return IndexDirectoryResponse(
             path=str(directory),
+            project=project,
             indexed_methods=len(indexed_map),
+            indexed_file_summaries=int(indexed_summaries),
             loaded_method_docs=len(method_docs_map),
         )
     except Exception as e:
