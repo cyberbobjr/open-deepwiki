@@ -40,6 +40,12 @@ class AppConfig(BaseModel):
     chat_api_base: Optional[str] = None
     llm_api_key: Optional[str] = None
 
+    # Embeddings input compatibility
+    # If True, langchain_openai may tokenize long inputs and send token-id arrays to the
+    # embeddings API. Some OpenAI-compatible servers only accept string inputs.
+    # Default is False for compatibility.
+    embeddings_check_ctx_length: bool = False
+
     # SSL / TLS
     # Path to a PEM file containing root CA certificates to trust for outbound HTTPS.
     # When set, this is applied to common env vars used by requests/urllib3 and many
@@ -94,6 +100,15 @@ def apply_config_to_env(config: AppConfig) -> None:
 
     if getattr(config, "embeddings_model", None) and not os.getenv("OPENAI_EMBEDDING_MODEL"):
         os.environ["OPENAI_EMBEDDING_MODEL"] = str(config.embeddings_model)
+
+    # Controls whether embeddings can send token-id arrays vs strings.
+    # Consumed by core.rag.embeddings.create_embeddings().
+    if getattr(config, "embeddings_check_ctx_length", None) is not None and not os.getenv(
+        "OPEN_DEEPWIKI_EMBEDDINGS_CHECK_CTX_LENGTH"
+    ):
+        os.environ["OPEN_DEEPWIKI_EMBEDDINGS_CHECK_CTX_LENGTH"] = (
+            "true" if bool(config.embeddings_check_ctx_length) else "false"
+        )
 
     if getattr(config, "chat_model", None) and not os.getenv("OPENAI_CHAT_MODEL"):
         os.environ["OPENAI_CHAT_MODEL"] = str(config.chat_model)

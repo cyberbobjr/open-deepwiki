@@ -6,6 +6,14 @@ from typing import Any, Dict, Optional
 from langchain_openai import OpenAIEmbeddings
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    v = raw.strip().lower()
+    return v in {"1", "true", "yes", "y", "on"}
+
+
 def create_embeddings(base_url: Optional[str] = None) -> OpenAIEmbeddings:
     """Create OpenAI embeddings with optional custom base URL."""
 
@@ -25,6 +33,16 @@ def create_embeddings(base_url: Optional[str] = None) -> OpenAIEmbeddings:
     kwargs: Dict[str, Any] = {
         "model": model,
     }
+
+    # Compatibility note:
+    # langchain_openai's OpenAIEmbeddings may send token-id arrays (list[int]) when
+    # `check_embedding_ctx_length=True` (it tokenizes and passes tokens to the API).
+    # Many OpenAI-compatible embedding servers only accept string inputs.
+    # Default to string inputs for compatibility, and allow opting back in.
+    kwargs["check_embedding_ctx_length"] = _env_bool(
+        "OPEN_DEEPWIKI_EMBEDDINGS_CHECK_CTX_LENGTH",
+        default=False,
+    )
 
     for key in ("base_url", "openai_api_base"):
         try:

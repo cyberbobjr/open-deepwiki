@@ -72,6 +72,11 @@ java_codebase_dir: ./fixtures
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
 ssl_ca_file: /path/to/root-ca-bundle.pem
 
+# Embeddings compatibility
+# Some OpenAI-compatible embedding servers only accept string inputs.
+# Set this to false to prevent sending token-id arrays.
+embeddings_check_ctx_length: false
+
 # If you're behind a corporate proxy that uses a self-signed / private CA:
 # - Put the proxy's root CA certificate in a PEM file
 # - Point `ssl_ca_file` to it
