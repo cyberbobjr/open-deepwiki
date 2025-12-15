@@ -15,6 +15,9 @@ class AppConfig(BaseModel):
     debug_level: str = "INFO"
     java_codebase_dir: str = "./"
 
+    # FastAPI / Uvicorn
+    api_port: int = 8000
+
     # LLM configuration (for embeddings + chat).
     # This repo currently uses embeddings (Chroma + OpenAIEmbeddings) and may
     # also use a chat model for answer generation.

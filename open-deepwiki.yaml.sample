@@ -3,6 +3,9 @@
 
 debug_level: INFO
 
+# FastAPI / Uvicorn settings (used when starting via `./venv/bin/python app.py`)
+api_port: 8000
+
 # Root directory to scan/index for Java code.
 # Example: /abs/path/to/repo or ./fixtures
 java_codebase_dir: ./fixtures

@@ -50,6 +50,10 @@ python indexer.py
 3) Démarrer l’API HTTP :
 
 ```bash
+# Option A (recommandé si tu veux que le port vienne de `open-deepwiki.yaml`) :
+./venv/bin/python app.py
+
+# Option B (mode dev reload) :
 uvicorn app:app --reload --port 8000
 # si tu ne veux pas activer le venv :
 ./venv/bin/python -m uvicorn app:app --reload --port 8000

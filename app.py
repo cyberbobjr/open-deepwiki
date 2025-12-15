@@ -5,11 +5,12 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+import uvicorn
 
 from config import AppConfig, apply_config_to_env, configure_logging, load_config
 from utils.vectorstore import _get_vectorstore, _load_method_docs_map
 from core.rag.retriever import GraphEnrichedRetriever
-from router.api import QueryRequest, QueryResult, router as api_router
+from router.api import router as api_router
 
 
 def create_app() -> FastAPI:
@@ -51,3 +52,25 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+
+
+def main() -> None:
+    load_dotenv(override=False)
+
+    config_path = os.getenv("OPEN_DEEPWIKI_CONFIG")
+    config: AppConfig = load_config(config_path)
+    configure_logging(config.debug_level)
+
+    # Allow specifying LLM/embeddings settings in YAML config.
+    apply_config_to_env(config)
+
+    uvicorn.run(
+        "app:app",
+        host="127.0.0.1",
+        port=int(config.api_port),
+        reload=False,
+    )
+
+
+if __name__ == "__main__":
+    main()

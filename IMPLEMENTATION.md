@@ -125,6 +125,10 @@ The implementation includes:
 ```bash
 pip install -r requirements.txt
 python indexer.py
+# Option A (port configuré via open-deepwiki.yaml -> api_port)
+./venv/bin/python app.py
+
+# Option B (mode dev reload)
 uvicorn app:app --reload --port 8000
 ```
 
