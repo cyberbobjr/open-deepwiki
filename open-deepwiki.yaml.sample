@@ -35,3 +35,9 @@ embeddings_model: text-embedding-3-large
 chat_model: gpt-4o-mini
 llm_api_base: https://api.openai.com/v1
 llm_api_key: null # mets la clé ici, ou préfère l’env `OPENAI_API_KEY`
+
+# SSL / TLS
+# Optional: path to a PEM file containing root CA certificates for outbound HTTPS.
+# Useful behind corporate proxies / custom PKI.
+# If set, it is applied to: SSL_CERT_FILE, REQUESTS_CA_BUNDLE, CURL_CA_BUNDLE
+ssl_ca_file: null

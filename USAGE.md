@@ -22,6 +22,11 @@ Set up environment variables (optional):
 ```bash
 export OPENAI_API_KEY="your-api-key"
 export OPENAI_API_BASE="https://your-internal-api.example.com/v1"  # Optional custom URL
+
+# Optional: custom root CA bundle (PEM) for outbound HTTPS
+# Useful behind corporate proxies / custom PKI.
+export SSL_CERT_FILE="/path/to/root-ca-bundle.pem"
+export REQUESTS_CA_BUNDLE="/path/to/root-ca-bundle.pem"
 ```
 
 Optionnel: config YAML à la racine (par défaut `open-deepwiki.yaml`) :
@@ -29,6 +34,9 @@ Optionnel: config YAML à la racine (par défaut `open-deepwiki.yaml`) :
 ```yaml
 debug_level: INFO
 java_codebase_dir: ./fixtures
+
+# Optional: custom root CA bundle (PEM) for outbound HTTPS
+ssl_ca_file: /path/to/root-ca-bundle.pem
 ```
 
 ## Mode “application” (indexer + API)

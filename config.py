@@ -36,6 +36,12 @@ class AppConfig(BaseModel):
     llm_api_base: Optional[str] = None
     llm_api_key: Optional[str] = None
 
+    # SSL / TLS
+    # Path to a PEM file containing root CA certificates to trust for outbound HTTPS.
+    # When set, this is applied to common env vars used by requests/urllib3 and many
+    # OpenSSL-based clients.
+    ssl_ca_file: Optional[str] = None
+
 
 def apply_config_to_env(config: AppConfig) -> None:
     """Apply config values to environment variables if not already set.
@@ -58,6 +64,22 @@ def apply_config_to_env(config: AppConfig) -> None:
 
     if getattr(config, "chat_model", None) and not os.getenv("OPENAI_CHAT_MODEL"):
         os.environ["OPENAI_CHAT_MODEL"] = str(config.chat_model)
+
+    # SSL CA bundle override for outbound HTTPS.
+    # Prefer respecting already-set env vars so ops can override config.
+    ssl_ca_file = getattr(config, "ssl_ca_file", None)
+    if ssl_ca_file:
+        if not os.path.exists(str(ssl_ca_file)):
+            logging.getLogger(__name__).warning(
+                "Configured ssl_ca_file does not exist: %s", ssl_ca_file
+            )
+
+        if not os.getenv("SSL_CERT_FILE"):
+            os.environ["SSL_CERT_FILE"] = str(ssl_ca_file)
+        if not os.getenv("REQUESTS_CA_BUNDLE"):
+            os.environ["REQUESTS_CA_BUNDLE"] = str(ssl_ca_file)
+        if not os.getenv("CURL_CA_BUNDLE"):
+            os.environ["CURL_CA_BUNDLE"] = str(ssl_ca_file)
 
     # Chroma telemetry opt-out (https://docs.trychroma.com/telemetry)
     if getattr(config, "chroma_anonymized_telemetry", None) is not None and not os.getenv(
