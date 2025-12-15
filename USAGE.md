@@ -45,6 +45,15 @@ export NO_PROXY="127.0.0.1,localhost,.mycorp.local"
 # Optional: control where tiktoken stores its cache/downloaded encoding files
 export TIKTOKEN_CACHE_DIR="/abs/path/to/tiktoken-cache"
 
+# Note: tiktoken does NOT cache files by their original filename.
+# It stores each downloaded URL under:
+#   $TIKTOKEN_CACHE_DIR/<sha1(url)>
+# Example (compute the cache key):
+#   ./venv/bin/python -c 'import hashlib; url="https://openaipublic.blob.core.windows.net/encodings/cl100k_base.tiktoken"; print(hashlib.sha1(url.encode()).hexdigest())'
+# If you already have the encoding file offline, you can place it at:
+#   $TIKTOKEN_CACHE_DIR/<that_sha1>
+# and it will be used (as long as the file bytes match the expected SHA256 inside tiktoken).
+
 # Optional: prefetch encodings at startup (forces download/caching)
 # Configure via YAML (recommended). There is no dedicated env var for this in open-deepwiki.
 ```
@@ -62,6 +71,11 @@ java_codebase_dir: ./fixtures
 
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
 ssl_ca_file: /path/to/root-ca-bundle.pem
+
+# If you're behind a corporate proxy that uses a self-signed / private CA:
+# - Put the proxy's root CA certificate in a PEM file
+# - Point `ssl_ca_file` to it
+# This is the safe fix for CERTIFICATE_VERIFY_FAILED (instead of disabling TLS verification).
 
 # Optional: outbound proxy for downloads + API calls
 http_proxy: http://proxy.mycorp.local:3128

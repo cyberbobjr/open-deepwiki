@@ -55,6 +55,7 @@ class AppConfig(BaseModel):
 
     # Optional: where tiktoken stores downloaded/cached encoding files.
     # Maps to `TIKTOKEN_CACHE_DIR`.
+    # Note: tiktoken stores downloads under `<cache_dir>/<sha1(url)>`, not by original filename.
     tiktoken_cache_dir: Optional[str] = None
 
     # Optional: prefetch tiktoken encodings at startup to force download/caching.

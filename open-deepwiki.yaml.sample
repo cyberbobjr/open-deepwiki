@@ -64,6 +64,7 @@ no_proxy: null
 
 # Optional: tiktoken cache directory (helps if encodings must be downloaded through proxy)
 # Maps to: TIKTOKEN_CACHE_DIR
+# Note: tiktoken caches by sha1(url), not by original filename.
 tiktoken_cache_dir: null
 
 # Optional: prefetch tiktoken encodings at startup (forces download/caching)
