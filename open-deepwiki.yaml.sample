@@ -65,3 +65,13 @@ no_proxy: null
 # Optional: tiktoken cache directory (helps if encodings must be downloaded through proxy)
 # Maps to: TIKTOKEN_CACHE_DIR
 tiktoken_cache_dir: null
+
+# Optional: prefetch tiktoken encodings at startup (forces download/caching)
+# If enabled and no encodings are provided, defaults to: ["cl100k_base"]
+# Example:
+# tiktoken_prefetch: true
+# tiktoken_prefetch_encodings:
+#   - cl100k_base
+#   - o200k_base
+tiktoken_prefetch: false
+tiktoken_prefetch_encodings: null

@@ -57,6 +57,12 @@ class AppConfig(BaseModel):
     # Maps to `TIKTOKEN_CACHE_DIR`.
     tiktoken_cache_dir: Optional[str] = None
 
+    # Optional: prefetch tiktoken encodings at startup to force download/caching.
+    # When enabled, `tiktoken.get_encoding(name)` is called for each encoding.
+    # If `tiktoken_prefetch_encodings` is not set, defaults to ["cl100k_base"].
+    tiktoken_prefetch: bool = False
+    tiktoken_prefetch_encodings: Optional[list[str]] = None
+
 
 def apply_config_to_env(config: AppConfig) -> None:
     """Apply config values to environment variables if not already set.
@@ -140,6 +146,30 @@ def apply_config_to_env(config: AppConfig) -> None:
         "ANONYMIZED_TELEMETRY"
     ):
         os.environ["ANONYMIZED_TELEMETRY"] = "True" if bool(config.chroma_anonymized_telemetry) else "False"
+
+
+def prefetch_tiktoken_encodings(config: AppConfig) -> None:
+    """Force-download/cache tiktoken encodings.
+
+    This is useful in locked-down environments where you want downloads to happen
+    at startup (with proxies/CA configured) instead of lazily later.
+    """
+
+    if not bool(getattr(config, "tiktoken_prefetch", False)):
+        return
+
+    encodings = getattr(config, "tiktoken_prefetch_encodings", None) or ["cl100k_base"]
+
+    try:
+        import tiktoken  # type: ignore
+    except Exception as e:  # pragma: no cover
+        raise RuntimeError(
+            "tiktoken_prefetch is enabled but 'tiktoken' could not be imported. "
+            "Install it (pip install tiktoken) or disable tiktoken_prefetch."
+        ) from e
+
+    for name in encodings:
+        tiktoken.get_encoding(name)
 
 
 def load_config(path: Optional[str] = None) -> AppConfig:

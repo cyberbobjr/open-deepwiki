@@ -44,6 +44,9 @@ export NO_PROXY="127.0.0.1,localhost,.mycorp.local"
 
 # Optional: control where tiktoken stores its cache/downloaded encoding files
 export TIKTOKEN_CACHE_DIR="/abs/path/to/tiktoken-cache"
+
+# Optional: prefetch encodings at startup (forces download/caching)
+# Configure via YAML (recommended). There is no dedicated env var for this in open-deepwiki.
 ```
 
 Optionnel: config YAML à la racine (par défaut `open-deepwiki.yaml`) :
@@ -67,6 +70,11 @@ no_proxy: 127.0.0.1,localhost,.mycorp.local
 
 # Optional: tiktoken cache directory
 tiktoken_cache_dir: /abs/path/to/tiktoken-cache
+
+# Optional: prefetch tiktoken encodings at startup (forces download/caching)
+tiktoken_prefetch: true
+tiktoken_prefetch_encodings:
+    - cl100k_base
 ```
 
 ## Mode “application” (indexer + API)

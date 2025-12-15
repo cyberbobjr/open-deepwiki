@@ -8,6 +8,7 @@ from fastapi import FastAPI
 import uvicorn
 
 from config import AppConfig, apply_config_to_env, configure_logging, load_config
+from config import prefetch_tiktoken_encodings
 from utils.vectorstore import _get_vectorstore, _load_method_docs_map
 from core.rag.retriever import GraphEnrichedRetriever
 from router.api import router as api_router
@@ -34,6 +35,8 @@ def create_app() -> FastAPI:
         fastapi_app.state.startup_error = None
 
         try:
+            prefetch_tiktoken_encodings(config)
+
             vectorstore = _get_vectorstore()
             method_docs_map = _load_method_docs_map(vectorstore)
 

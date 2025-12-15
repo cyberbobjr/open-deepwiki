@@ -8,7 +8,7 @@ from typing import Iterable, List
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 
-from config import AppConfig, apply_config_to_env, configure_logging, load_config
+from config import AppConfig, apply_config_to_env, configure_logging, load_config, prefetch_tiktoken_encodings
 from core.parsing.java_parser import JavaMethod, JavaParser
 from core.rag.embeddings import create_embeddings
 from core.rag.indexing import index_java_methods
@@ -105,6 +105,9 @@ def main() -> None:
 
     # Allow specifying LLM/embeddings settings in YAML config.
     apply_config_to_env(config)
+
+    # Force-download/cache tiktoken encodings early if configured.
+    prefetch_tiktoken_encodings(config)
 
     logger.info(
         "Indexing Java codebase dir=%s (config=%s)",
