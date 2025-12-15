@@ -48,10 +48,6 @@ class AppConfig(BaseModel):
     embeddings_model: Optional[str] = None
     chat_model: Optional[str] = None
     llm_api_base: Optional[str] = None
-    # Optional overrides if you want different gateways for embeddings vs chat.
-    # If not set, they are derived from `llm_api_base` (NOT from OPENAI_API_BASE).
-    embeddings_api_base: Optional[str] = None
-    chat_api_base: Optional[str] = None
     llm_api_key: Optional[str] = None
 
     # Embeddings input compatibility
@@ -88,11 +84,11 @@ class AppConfig(BaseModel):
 def apply_config_to_env(config: AppConfig) -> None:
     """Apply config values to environment variables if not already set.
 
-    This keeps the rest of the code using env vars, with optional per-feature base URLs:
+    This keeps the rest of the code using env vars:
     - OPENAI_API_KEY
     - OPENAI_API_BASE (default/fallback)
-    - OPENAI_EMBEDDING_API_BASE (optional override for embeddings)
-    - OPENAI_CHAT_API_BASE (optional override for chat)
+    - OPENAI_EMBEDDING_API_BASE
+    - OPENAI_CHAT_API_BASE
     - OPENAI_EMBEDDING_MODEL
     - OPENAI_CHAT_MODEL
     """
@@ -103,17 +99,14 @@ def apply_config_to_env(config: AppConfig) -> None:
     if getattr(config, "llm_api_base", None) and not os.getenv("OPENAI_API_BASE"):
         os.environ["OPENAI_API_BASE"] = str(config.llm_api_base)
 
-    # Endpoints: prefer per-feature overrides, otherwise derive from llm_api_base.
-    # Strict: never derive from OPENAI_API_BASE (only from llm_api_base in YAML).
+    # Endpoints: derive from llm_api_base (strict: never derive from OPENAI_API_BASE).
     llm_api_base = getattr(config, "llm_api_base", None)
 
-    embeddings_api_base = getattr(config, "embeddings_api_base", None) or llm_api_base
-    if embeddings_api_base and not os.getenv("OPENAI_EMBEDDING_API_BASE"):
-        os.environ["OPENAI_EMBEDDING_API_BASE"] = str(embeddings_api_base)
+    if llm_api_base and not os.getenv("OPENAI_EMBEDDING_API_BASE"):
+        os.environ["OPENAI_EMBEDDING_API_BASE"] = str(llm_api_base)
 
-    chat_api_base = getattr(config, "chat_api_base", None) or llm_api_base
-    if chat_api_base and not os.getenv("OPENAI_CHAT_API_BASE"):
-        os.environ["OPENAI_CHAT_API_BASE"] = str(chat_api_base)
+    if llm_api_base and not os.getenv("OPENAI_CHAT_API_BASE"):
+        os.environ["OPENAI_CHAT_API_BASE"] = str(llm_api_base)
 
     if getattr(config, "embeddings_model", None) and not os.getenv("OPENAI_EMBEDDING_MODEL"):
         os.environ["OPENAI_EMBEDDING_MODEL"] = str(config.embeddings_model)

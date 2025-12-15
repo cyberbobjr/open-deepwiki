@@ -43,3 +43,4 @@ open-deepwiki.yaml
 postimplementation_logs
 
 cache
+checkpoints.sqlite3

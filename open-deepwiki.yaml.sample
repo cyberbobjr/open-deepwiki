@@ -28,35 +28,27 @@ project_name: null
 # Helps RAG answer file-level questions without reading every method.
 index_file_summaries: false
 
-# Optional: in-memory session history for the /ask endpoint.
-# Max number of messages stored per (project, session_id).
-session_history_max_messages: 20
+# /ask persistence is handled by the LangGraph checkpointer (see bottom of file).
 # LLM (embeddings + chat)
 # Ces champs alimentent automatiquement des variables d'env compatibles OpenAI/LangChain :
 # - llm_api_key       -> OPENAI_API_KEY
 # - llm_api_base      -> OPENAI_API_BASE + (par défaut) OPENAI_EMBEDDING_API_BASE + OPENAI_CHAT_API_BASE
-# - embeddings_api_base -> (optionnel) override pour embeddings uniquement
-# - chat_api_base       -> (optionnel) override pour chat uniquement
 # - embeddings_model  -> OPENAI_EMBEDDING_MODEL
 # - chat_model        -> OPENAI_CHAT_MODEL
 #
 # IMPORTANT:
 # - Si tu veux la même URL pour embeddings + chat, renseigne uniquement `llm_api_base`.
-# - Si tu as des gateways séparés, utilise `embeddings_api_base` / `chat_api_base` comme overrides.
+# - Si tu as des gateways séparés, configure directement les env vars OPENAI_EMBEDDING_API_BASE / OPENAI_CHAT_API_BASE.
 #
 # Exemple:
 # embeddings_model: text-embedding-3-large
 # chat_model: gpt-4o-mini
 # llm_api_base: https://your-internal-api.example.com/v1
-# embeddings_api_base: https://your-embeddings-gateway.example.com/v1
-# chat_api_base: https://your-llm-gateway.example.com/v1
 # llm_api_key: sk-...
 
 embeddings_model: text-embedding-3-large
 chat_model: gpt-4o-mini
 llm_api_base: https://api.openai.com/v1
-embeddings_api_base: null
-chat_api_base: null
 llm_api_key: null # mets la clé ici, ou préfère l’env `OPENAI_API_KEY`
 
 # Embeddings compatibility

@@ -26,8 +26,8 @@
 ## Strict configuration (no silent fallback)
 
 - Do not introduce implicit fallbacks for LLM/embeddings endpoints or models.
-  - Embeddings must use an explicit base URL (`OPENAI_EMBEDDING_API_BASE` / `embeddings_api_base`) and explicit model (`OPENAI_EMBEDDING_MODEL` / `embeddings_model`).
-  - Chat must use an explicit base URL (`OPENAI_CHAT_API_BASE` / `chat_api_base`) and explicit model (`OPENAI_CHAT_MODEL` / `chat_model`).
+  - Embeddings must use an explicit base URL (`OPENAI_EMBEDDING_API_BASE` or `llm_api_base` in YAML) and explicit model (`OPENAI_EMBEDDING_MODEL` / `embeddings_model`).
+  - Chat must use an explicit base URL (`OPENAI_CHAT_API_BASE` or `llm_api_base` in YAML) and explicit model (`OPENAI_CHAT_MODEL` / `chat_model`).
 - If a required value is missing, fail fast with a clear error (do not silently fall back to `OPENAI_API_BASE` or built-in default models).
 
 ## App structure guidance (refactor target)

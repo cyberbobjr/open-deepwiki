@@ -78,9 +78,6 @@ checkpointer_sqlite_path: ./checkpoints.sqlite3
 # Optional: LLM endpoints
 # If you want a single URL for embeddings + chat, set only:
 # llm_api_base: https://your-internal-api.example.com/v1
-# If you need separate gateways, set overrides:
-# embeddings_api_base: https://your-embeddings-gateway.example.com/v1
-# chat_api_base: https://your-llm-gateway.example.com/v1
 
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
 ssl_ca_file: /path/to/root-ca-bundle.pem

@@ -21,7 +21,7 @@ def create_embeddings(base_url: Optional[str] = None) -> OpenAIEmbeddings:
         base_url = os.getenv("OPENAI_EMBEDDING_API_BASE")
     if not base_url:
         raise ValueError(
-            "Embeddings base URL is not set. Set OPENAI_EMBEDDING_API_BASE (or embeddings_api_base in YAML)."
+            "Embeddings base URL is not set. Set OPENAI_EMBEDDING_API_BASE (or llm_api_base in YAML)."
         )
 
     model = os.getenv("OPENAI_EMBEDDING_MODEL")
