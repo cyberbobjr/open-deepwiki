@@ -9,6 +9,8 @@ def create_codebase_agent(
     root_dir: str,
     retriever: Any,
     checkpointer: Any,
+    project_graph_sqlite_path: str = "./project_graph.sqlite3",
+    default_project: Optional[str] = None,
     debug: bool = False,
     system_prompt: Optional[str] = None,
 ) -> Any:
@@ -24,6 +26,7 @@ def create_codebase_agent(
 
     from utils.chat import create_chat_model
     from utils.codebase_tools import make_codebase_tools
+    from core.project_graph import SqliteProjectGraphStore
 
     resolved_root = str(Path(root_dir).expanduser().resolve())
     tools = list(make_codebase_tools(root_dir=resolved_root))
@@ -79,6 +82,44 @@ def create_codebase_agent(
         return "\n\n".join(blocks)
 
     tools.append(vector_search)
+
+    graph_path = str(Path(project_graph_sqlite_path).expanduser().resolve())
+
+    @tool("project_graph_overview")
+    def project_graph_overview(project: str = "", limit: int = 25) -> str:
+        """Return a compact overview of the indexed project graph.
+
+        Args:
+            project: Project scope (empty means default/unscoped).
+            limit: Max list sizes for top nodes/edges.
+        """
+
+        store = SqliteProjectGraphStore(sqlite_path=graph_path)
+        proj = (project or "").strip() or (default_project or None)
+        return store.overview_text(project=proj, limit=int(limit))
+
+    @tool("project_graph_neighbors")
+    def project_graph_neighbors(project: str = "", node_id: str = "", depth: int = 1, limit: int = 60) -> str:
+        """Return call graph neighbors around a node_id.
+
+        Args:
+            project: Project scope (empty means default/unscoped).
+            node_id: A method scoped id (e.g. '<project>::<method_id>') or method id.
+            depth: BFS depth (1-4).
+            limit: Max edges.
+        """
+
+        store = SqliteProjectGraphStore(sqlite_path=graph_path)
+        proj = (project or "").strip() or (default_project or None)
+        nid = str(node_id or "").strip()
+        if not nid:
+            return "ERROR: node_id is required"
+        if proj and not nid.startswith(f"{proj}::") and "::" not in nid:
+            nid = f"{proj}::{nid}"
+        return store.neighbors_text(project=proj, node_id=nid, depth=int(depth), limit=int(limit))
+
+    tools.append(project_graph_overview)
+    tools.append(project_graph_neighbors)
 
     llm = create_chat_model()
 

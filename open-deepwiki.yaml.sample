@@ -93,3 +93,8 @@ tiktoken_prefetch_encodings: null
 # Supported backends: sqlite
 checkpointer_backend: sqlite
 checkpointer_sqlite_path: ./checkpoints.sqlite3
+
+# Project graph persistence
+# Stores a lightweight project graph (files/methods + best-effort call edges) used to
+# generate a "project overview" document and power graph tools.
+project_graph_sqlite_path: ./project_graph.sqlite3

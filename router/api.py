@@ -19,9 +19,10 @@ router = APIRouter()
 class QueryRequest(BaseModel):
     query: str = Field(..., min_length=1)
     k: int = Field(4, ge=1, le=50)
-    project: Optional[str] = Field(
-        default=None,
-        description="Project scope name. If set, retrieval is restricted to documents indexed with the same project.",
+    project: str = Field(
+        ...,
+        min_length=1,
+        description="Project scope name (required). Retrieval is restricted to documents indexed with the same project.",
     )
 
 
@@ -38,9 +39,10 @@ class QueryResult(BaseModel):
 
 class IndexDirectoryRequest(BaseModel):
     path: str = Field(..., min_length=1, description="Chemin du répertoire à indexer (scan récursif des .java).")
-    project: Optional[str] = Field(
-        default=None,
-        description="Project scope name attached to indexed docs. Defaults to config.project_name when set.",
+    project: str = Field(
+        ...,
+        min_length=1,
+        description="Project scope name (required) attached to indexed docs.",
     )
     reindex: bool = Field(
         default=False,
@@ -54,7 +56,7 @@ class IndexDirectoryRequest(BaseModel):
 
 class IndexDirectoryResponse(BaseModel):
     path: str
-    project: Optional[str] = None
+    project: str
     indexed_methods: int
     indexed_file_summaries: int = 0
     loaded_method_docs: int
@@ -153,12 +155,25 @@ def list_indexed_projects(request: Request) -> List[str]:
     return sorted(projects)
 
 
+class ProjectQueryRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    k: int = Field(4, ge=1, le=50)
+
+
+@router.post("/projects/{project}/query", response_model=List[QueryResult])
+def query_in_project(project: str, request: Request, req: ProjectQueryRequest) -> List[QueryResult]:
+    """Query within a project provided in the URL path."""
+
+    return query(request, QueryRequest(query=req.query, k=req.k, project=project))
+
+
 class AskRequest(BaseModel):
     question: str = Field(..., min_length=1)
     k: int = Field(4, ge=1, le=50)
-    project: Optional[str] = Field(
-        default=None,
-        description="Project scope name. If set, retrieval is restricted to documents indexed with the same project.",
+    project: str = Field(
+        ...,
+        min_length=1,
+        description="Project scope name (required). Retrieval is restricted to documents indexed with the same project.",
     )
     session_id: Optional[str] = Field(
         default=None,
@@ -168,25 +183,31 @@ class AskRequest(BaseModel):
 
 class AskResponse(BaseModel):
     session_id: str
-    project: Optional[str] = None
+    project: str
     answer: str
     context: List[QueryResult]
 
 
-def _resolve_project(request: Request, explicit: Optional[str]) -> Optional[str]:
-    if explicit is not None and str(explicit).strip() != "":
-        return str(explicit).strip()
-    config = getattr(request.app.state, "config", None)
-    cfg_project = getattr(config, "project_name", None)
-    if cfg_project:
-        return str(cfg_project)
-    env_project = os.getenv("OPEN_DEEPWIKI_PROJECT")
-    if env_project:
-        return str(env_project)
-    return None
+def _normalize_project(project: str) -> str:
+    """Normalize and validate a project scope string.
+
+    Args:
+        project: Project scope name.
+
+    Returns:
+        Normalized project name.
+
+    Raises:
+        HTTPException: If the project name is empty.
+    """
+
+    p = str(project or "").strip()
+    if not p:
+        raise HTTPException(status_code=400, detail="project is required")
+    return p
 
 
-def _get_scoped_retriever(request: Request, *, project: Optional[str]):
+def _get_scoped_retriever(request: Request, *, project: str):
     """Return (and cache) a scoped retriever + scoped method_docs_map."""
 
     from utils.vectorstore import _load_method_docs_map
@@ -197,8 +218,8 @@ def _get_scoped_retriever(request: Request, *, project: Optional[str]):
     if not hasattr(request.app.state, "method_docs_maps"):
         request.app.state.method_docs_maps = {}
 
-    retrievers: Dict[Optional[str], Any] = request.app.state.retrievers
-    maps: Dict[Optional[str], Dict[str, Any]] = request.app.state.method_docs_maps
+    retrievers: Dict[str, Any] = request.app.state.retrievers
+    maps: Dict[str, Dict[str, Any]] = request.app.state.method_docs_maps
 
     vectorstore = getattr(request.app.state, "vectorstore")
 
@@ -220,25 +241,80 @@ def _get_scoped_retriever(request: Request, *, project: Optional[str]):
     return retrievers[project]
 
 
+class ProjectAskRequest(BaseModel):
+    question: str = Field(..., min_length=1)
+    k: int = Field(4, ge=1, le=50)
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Conversation session id. If omitted, a new session id is created and returned.",
+    )
+
+
+@router.post("/projects/{project}/ask", response_model=AskResponse)
+def ask_in_project(project: str, request: Request, req: ProjectAskRequest) -> AskResponse:
+    """Ask within a project provided in the URL path."""
+
+    return ask(
+        request,
+        AskRequest(
+            question=req.question,
+            k=req.k,
+            project=project,
+            session_id=req.session_id,
+        ),
+    )
+
+
+class ProjectIndexDirectoryRequest(BaseModel):
+    path: str = Field(..., min_length=1, description="Chemin du répertoire à indexer (scan récursif des .java).")
+    reindex: bool = Field(
+        default=False,
+        description="If true, deletes existing docs in this scope before indexing.",
+    )
+    include_file_summaries: Optional[bool] = Field(
+        default=None,
+        description="If true, indexes one summary document per Java file (heuristic, no LLM). Defaults to config.index_file_summaries.",
+    )
+
+
+@router.post("/projects/{project}/index-directory", response_model=IndexDirectoryResponse)
+def index_directory_in_project(
+    project: str, request: Request, req: ProjectIndexDirectoryRequest
+) -> IndexDirectoryResponse:
+    """Index a directory into a project provided in the URL path."""
+
+    return index_directory(
+        request,
+        IndexDirectoryRequest(
+            path=req.path,
+            project=project,
+            reindex=req.reindex,
+            include_file_summaries=req.include_file_summaries,
+        ),
+    )
+
+
 
 
 @router.get("/health")
 def health(request: Request) -> Dict[str, Any]:
     config = getattr(request.app.state, "config", None)
-    default_project = getattr(config, "project_name", None) or os.getenv("OPEN_DEEPWIKI_PROJECT")
-    # Prefer scoped caches when present.
     method_maps = getattr(request.app.state, "method_docs_maps", None) or {}
-    default_loaded = (
-        len(method_maps.get(default_project) or {}) if isinstance(method_maps, dict) else 0
-    )
-    legacy_loaded = len(getattr(request.app.state, "method_docs_map", {}) or {})
+    loaded_scopes = list(method_maps.keys()) if isinstance(method_maps, dict) else []
+    loaded_total = 0
+    if isinstance(method_maps, dict):
+        for _, m in method_maps.items():
+            try:
+                loaded_total += len(m or {})
+            except Exception:
+                pass
     return {
         "status": "ok",
         "config_path": getattr(request.app.state, "config_path", "open-deepwiki.yaml"),
         "debug_level": getattr(config, "debug_level", "INFO"),
         "java_codebase_dir": getattr(config, "java_codebase_dir", "./"),
         "project_name": getattr(config, "project_name", None),
-        "default_project": default_project,
+        "default_project": None,
         "javadoc_min_meaningful_lines": getattr(config, "javadoc_min_meaningful_lines", 3),
         "chroma_anonymized_telemetry": getattr(config, "chroma_anonymized_telemetry", False),
         "startup_error": getattr(request.app.state, "startup_error", None),
@@ -253,7 +329,8 @@ def health(request: Request) -> Dict[str, Any]:
         "tiktoken_prefetch_encodings": getattr(config, "tiktoken_prefetch_encodings", None),
         "chroma_persist_dir": os.getenv("CHROMA_PERSIST_DIR", "./chroma_db"),
         "chroma_collection": os.getenv("CHROMA_COLLECTION", "java_methods"),
-        "method_docs_loaded": default_loaded or legacy_loaded,
+        "loaded_project_scopes": [str(p) for p in loaded_scopes if p],
+        "method_docs_loaded": int(loaded_total),
     }
 
 
@@ -269,7 +346,7 @@ def query(request: Request, req: QueryRequest) -> List[QueryResult]:
             detail="OPENAI_API_KEY is not set; cannot query embeddings-backed vector search.",
         )
 
-    project = _resolve_project(request, req.project)
+    project = _normalize_project(req.project)
     retriever = _get_scoped_retriever(request, project=project)
     retriever.k = req.k
 
@@ -305,13 +382,20 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
             detail="OPENAI_API_KEY is not set; cannot run chat completion.",
         )
 
-    project = _resolve_project(request, req.project)
+    project = _normalize_project(req.project)
     retriever = _get_scoped_retriever(request, project=project)
     retriever.k = req.k
     docs = retriever.get_relevant_documents(req.question)
 
+    # Always include a "big picture" overview when available.
+    project_overviews = getattr(request.app.state, "project_overviews", None) or {}
+    project_overview = project_overviews.get(project)
+
     context_results: List[QueryResult] = []
     context_blocks: List[str] = []
+
+    if isinstance(project_overview, str) and project_overview.strip():
+        context_blocks.append(f"### project_overview\n{project_overview.strip()}")
     for doc in docs:
         meta = doc.metadata or {}
         context_results.append(
@@ -391,10 +475,13 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
     agents: Dict[str, Any] = request.app.state.code_agents
     agent_key = f"{code_root_key}::{project or ''}"
     if agent_key not in agents:
+        graph_path = str(getattr(config, "project_graph_sqlite_path", "./project_graph.sqlite3") or "./project_graph.sqlite3")
         agents[agent_key] = create_codebase_agent(
             root_dir=code_root_key,
             retriever=retriever,
             checkpointer=checkpointer,
+            project_graph_sqlite_path=graph_path,
+            default_project=project or None,
             debug=(str(getattr(config, "debug_level", "")).upper() == "DEBUG"),
             system_prompt=system_prompt,
         )
@@ -450,12 +537,13 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
     # Imports ici pour garder le module léger au chargement.
     from indexer import scan_java_methods
     from core.parsing.java_parser import JavaParser
-    from core.rag.indexing import index_java_file_summaries, index_java_methods
+    from core.rag.indexing import index_java_file_summaries, index_java_methods, index_project_overview
     from core.parsing.tree_sitter_setup import setup_java_language
     from utils.vectorstore import _get_vectorstore, _load_method_docs_map, delete_scoped_documents
     from core.rag.retriever import GraphEnrichedRetriever
+    from core.project_graph import SqliteProjectGraphStore
 
-    project = _resolve_project(request, req.project)
+    project = _normalize_project(req.project)
 
     try:
         setup_java_language()
@@ -503,6 +591,14 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
         if include_summaries:
             indexed_summaries = len(index_java_file_summaries(methods, vectorstore))
 
+        # Build/update the project graph and persist a project overview doc.
+        graph_path = str(getattr(config, "project_graph_sqlite_path", "./project_graph.sqlite3") or "./project_graph.sqlite3")
+        graph_store = SqliteProjectGraphStore(sqlite_path=graph_path)
+        graph_store.rebuild(project=project, methods=methods)
+        overview = graph_store.overview_text(project=project)
+        if overview:
+            index_project_overview(project=project, overview_text=overview, vectorstore=vectorstore)
+
         persist = getattr(vectorstore, "persist", None)
         if callable(persist):
             persist()
@@ -513,6 +609,11 @@ def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirect
         if not hasattr(request.app.state, "method_docs_maps"):
             request.app.state.method_docs_maps = {}
         request.app.state.method_docs_maps[project] = method_docs_map
+
+        # Also keep a quick-access overview per project.
+        if not hasattr(request.app.state, "project_overviews"):
+            request.app.state.project_overviews = {}
+        request.app.state.project_overviews[project] = overview
 
         if not hasattr(request.app.state, "retrievers"):
             request.app.state.retrievers = {}

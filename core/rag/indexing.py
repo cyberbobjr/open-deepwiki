@@ -146,3 +146,25 @@ def index_java_file_summaries(methods: List[JavaMethod], vectorstore: Chroma) ->
 
     _safe_add_documents(vectorstore, documents, ids=ids)
     return out
+
+
+def index_project_overview(*, project: Optional[str], overview_text: str, vectorstore: Chroma) -> Document:
+    """Index a single "project overview" document for a project scope.
+
+    This document is meant to provide an always-available big-picture context that can
+    be injected into `/ask` prompts.
+    """
+
+    scoped_id = f"{project}::project::overview" if project else "project::overview"
+
+    doc = Document(
+        page_content=str(overview_text or "").strip(),
+        metadata={
+            "scoped_id": scoped_id,
+            "project": project,
+            "doc_type": "project_overview",
+        },
+    )
+
+    _safe_add_documents(vectorstore, [doc], ids=[scoped_id])
+    return doc

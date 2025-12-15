@@ -53,6 +53,21 @@
   - For module invocations: `./venv/bin/python -m <module>` (e.g., `./venv/bin/python -m unittest -v`).
   - If the venv is missing, create it with `python -m venv venv` and then install deps.
 
+## Documentation + typing (MANDATORY)
+
+- All public functions, methods, and classes MUST have a pydoc-style docstring.
+  - Describe what it does in 1–3 sentences.
+  - Document every argument (name + meaning + constraints).
+  - Document return value(s) and what they represent.
+  - Document raised exceptions when applicable.
+- Type hints are mandatory:
+  - Every function/method argument MUST be typed.
+  - Every function/method MUST declare a return type.
+  - Prefer precise types (e.g., `Optional[str]`, `Sequence[JavaMethod]`, `Dict[str, Any]`) over `Any`.
+  - Add types for local variables when it materially improves clarity or when inference is non-obvious.
+  - Do not introduce untyped containers like `list`/`dict`; use `list[str]`, `dict[str, int]`, etc.
+- Keep docstrings and types consistent with runtime behavior (no stale docs).
+
 ## Local workflows
 
 - Install deps: `pip install -r requirements.txt`

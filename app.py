@@ -9,15 +9,14 @@ import uvicorn
 
 from config import AppConfig, apply_config_to_env, configure_logging, load_config
 from config import prefetch_tiktoken_encodings
-from utils.vectorstore import _get_vectorstore, _load_method_docs_map
-from core.rag.retriever import GraphEnrichedRetriever
+from utils.vectorstore import _get_vectorstore
 from router.api import router as api_router
 
 
 def create_app() -> FastAPI:
     fastapi_app = FastAPI(title="open-deepwiki", version="0.1.0")
 
-    fastapi_app.include_router(api_router)
+    fastapi_app.include_router(api_router, prefix="/v1")
 
     @fastapi_app.on_event("startup")
     def _startup() -> None:
@@ -38,25 +37,14 @@ def create_app() -> FastAPI:
             prefetch_tiktoken_encodings(config)
 
             vectorstore = _get_vectorstore()
-            default_project = getattr(config, "project_name", None) or os.getenv("OPEN_DEEPWIKI_PROJECT")
-            method_docs_map = _load_method_docs_map(vectorstore, project=default_project)
-
             fastapi_app.state.vectorstore = vectorstore
-            # Scoped caches
-            fastapi_app.state.method_docs_maps = {default_project: method_docs_map}
-            fastapi_app.state.retrievers = {
-                default_project: GraphEnrichedRetriever(
-                    vectorstore=vectorstore,
-                    method_docs_map=method_docs_map,
-                    k=int(os.getenv("RAG_K", "4")),
-                    project=default_project,
-                )
-            }
 
-            # Backward-compatible single retriever/map
-            fastapi_app.state.method_docs_map = method_docs_map
-            fastapi_app.state.retriever = fastapi_app.state.retrievers[default_project]
-            fastapi_app.state.default_project = default_project
+            # Multi-project server mode: no implicit default project fallback.
+            # Caches are populated lazily on the first request per project scope.
+            fastapi_app.state.method_docs_maps = {}
+            fastapi_app.state.retrievers = {}
+            fastapi_app.state.project_overviews = {}
+            fastapi_app.state.default_project = None
         except Exception as e:  # pragma: no cover
             logging.getLogger(__name__).exception("Failed to initialize vectorstore/retriever")
             fastapi_app.state.startup_error = str(e)

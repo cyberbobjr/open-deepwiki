@@ -10,11 +10,15 @@ A Retrieval-Augmented Generation (RAG) system for Java codebases that uses graph
    - Method/Constructor ID
    - Signature
    - Type (method or constructor)
-   - Called methods
-   - Full code
-   - Javadoc documentation (via sibling node lookup)
-
-2. **GraphEnrichedRetriever**: A custom LangChain retriever that:
+ - `GET /v1/health`
+ - `POST /v1/query`
+ - `POST /v1/ask`
+ - `POST /v1/index-directory`
+ - `GET /v1/projects`
+ - `GET /v1/scopes`
+ - `POST /v1/scopes/{scope}/query`
+ - `POST /v1/scopes/{scope}/ask`
+ - `POST /v1/scopes/{scope}/index-directory`
    - Performs vector similarity search
    - Fetches dependency documentation via "calls" metadata
    - Enriches context with related method implementations
@@ -62,21 +66,24 @@ uvicorn app:app --reload --port 8000
 4) Check health:
 
 ```bash
-curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/v1/health
 ```
 
 API routes:
 
-- `GET /health`
-- `POST /query`
-- `POST /ask`
-- `POST /index-directory`
-- `GET /projects`
+- `GET /v1/health`
+- `POST /v1/query`
+- `POST /v1/ask`
+- `POST /v1/index-directory`
+- `GET /v1/projects`
+- `POST /v1/projects/{project}/query`
+- `POST /v1/projects/{project}/ask`
+- `POST /v1/projects/{project}/index-directory`
 
 5) Query:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/query \
+curl -X POST http://127.0.0.1:8000/v1/query \
    -H 'Content-Type: application/json' \
    -d '{"query":"create user","k":4,"project":"my-project"}'
 ```
@@ -84,20 +91,28 @@ curl -X POST http://127.0.0.1:8000/query \
 6) Ask:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/ask \
+curl -X POST http://127.0.0.1:8000/v1/ask \
    -H 'Content-Type: application/json' \
    -d '{"question":"How do I create a new user?","k":4,"project":"my-project"}'
 
 # The `session_id` field is returned in the response; reuse it to keep history.
-curl -X POST http://127.0.0.1:8000/ask \
+curl -X POST http://127.0.0.1:8000/v1/ask \
    -H 'Content-Type: application/json' \
    -d '{"question":"Where is validation done?","k":4,"project":"my-project","session_id":"<paste-session-id>"}'
+```
+
+Same call using a project in the URL (no `project` field in JSON):
+
+```bash
+curl -X POST http://127.0.0.1:8000/v1/projects/my-project/ask \
+   -H 'Content-Type: application/json' \
+   -d '{"question":"Where is validation done?","k":4,"session_id":"<paste-session-id>"}'
 ```
 
 7) Index a directory (recursive scan of `.java`):
 
 ```bash
-curl -X POST http://127.0.0.1:8000/index-directory \
+curl -X POST http://127.0.0.1:8000/v1/index-directory \
    -H 'Content-Type: application/json' \
    -d '{"path":"./fixtures","project":"my-project","reindex":true,"include_file_summaries":true}'
 ```

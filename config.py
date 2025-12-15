@@ -42,6 +42,9 @@ class AppConfig(BaseModel):
     checkpointer_backend: str = "sqlite"
     checkpointer_sqlite_path: str = "./checkpoints.sqlite3"
 
+    # Project graph persistence (big-picture structure + call graph)
+    project_graph_sqlite_path: str = "./project_graph.sqlite3"
+
     # LLM configuration (for embeddings + chat).
     # This repo currently uses embeddings (Chroma + OpenAIEmbeddings) and may
     # also use a chat model for answer generation.
