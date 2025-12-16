@@ -90,10 +90,7 @@ def scan_java_methods(codebase_dir: str, parser: JavaParser) -> List[JavaMethod]
             continue
 
         try:
-            file_methods = parser.parse_java_file(java_code)
-            for m in file_methods:
-                # Enrich parsed method objects with scan context.
-                m.file_path = str(path)
+            file_methods = parser.parse_java_file(java_code, file_path=str(path))
             methods.extend(file_methods)
         except Exception as e:
             logger.warning("Skipping unparsable file %s: %s", path, e)

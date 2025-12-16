@@ -24,9 +24,245 @@ const messagesEl = ref<HTMLElement | null>(null)
 const MarkdownItCtor: any = (MarkdownIt as any).default ?? (MarkdownIt as any)
 const md = new MarkdownItCtor({ linkify: true, breaks: true, html: false })
 
+type TocItem = {
+  id: string
+  text: string
+  level: number
+}
+
+function getApiBase(): string {
+  const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
+  return base.endsWith('/') ? base.slice(0, -1) : base
+}
+
+function slugifyHeading(text: string): string {
+  const base = String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[`*_~]/g, '')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+
+  return base || 'section'
+}
+
+function renderMarkdownWithToc(markdown: string): { html: string; toc: TocItem[] } {
+  const rawHtml = md.render(markdown ?? '')
+
+  const container = document.createElement('div')
+  container.innerHTML = rawHtml
+
+  const headings = Array.from(container.querySelectorAll('h1,h2,h3,h4,h5,h6')) as HTMLHeadingElement[]
+  const seen: Record<string, number> = {}
+  const items: TocItem[] = []
+
+  for (const h of headings) {
+    const text = String(h.textContent || '').trim()
+    if (!text) continue
+
+    const base = slugifyHeading(text)
+    const n = (seen[base] ?? 0) + 1
+    seen[base] = n
+    const id = n === 1 ? base : `${base}-${n}`
+
+    h.id = id
+
+    const level = Number(String(h.tagName || '').replace(/[^0-9]/g, '')) || 2
+    items.push({ id, text, level })
+  }
+
+  const sanitized = DOMPurify.sanitize(container.innerHTML)
+  return { html: sanitized, toc: items }
+}
+
+function tocIndentClass(level: number): string {
+  if (level <= 2) return ''
+  if (level === 3) return 'pl-3'
+  if (level === 4) return 'pl-6'
+  return 'pl-9'
+}
+
+function extractAnchorHref(evt: MouseEvent): string | undefined {
+  const target = evt.target as HTMLElement | null
+  if (!target) return
+  const a = target.closest('a') as HTMLAnchorElement | null
+  if (!a) return
+  const href = String(a.getAttribute('href') || '').trim()
+  return href || undefined
+}
+
+function isMarkdownDocLink(href: string): boolean {
+  const h = String(href || '').trim()
+  if (!h) return false
+  if (h.startsWith('#')) return false
+
+  // Treat API docs links and direct markdown links as in-app docs.
+  if (h.includes('/docs/') && h.includes('.md')) return true
+  if (h.endsWith('.md')) return true
+  if (h.includes('.md#')) return true
+  return false
+}
+
+function resolveDocsUrl(href: string, baseUrl: string): string {
+  const h = String(href || '').trim()
+  if (!h) return ''
+
+  // Already absolute (http/https)
+  if (/^https?:\/\//i.test(h)) return h
+
+  // Already absolute path (e.g. /api/v1/...)
+  if (h.startsWith('/')) return h
+
+  // Resolve relative against a base URL (used for nested docs).
+  try {
+    const base = /^https?:\/\//i.test(baseUrl)
+      ? baseUrl
+      : new URL(baseUrl, window.location.origin).toString()
+    return new URL(h, base).toString()
+  } catch {
+    return h
+  }
+}
+
+function splitMarkdownHref(href: string): { url: string; hash?: string } {
+  const h = String(href || '')
+  const idx = h.indexOf('#')
+  if (idx < 0) return { url: h }
+  const url = h.slice(0, idx)
+  const hash = h.slice(idx + 1)
+  return { url: url || h, hash: hash || undefined }
+}
+
 function renderMarkdown(text: string): string {
   const raw = md.render(text ?? '')
   return DOMPurify.sanitize(raw)
+}
+
+const docOpen = ref(false)
+const docLoading = ref(false)
+const docError = ref<string | undefined>(undefined)
+const docUrl = ref<string | undefined>(undefined)
+const docTitle = ref<string>('')
+const docContentEl = ref<HTMLElement | null>(null)
+const docRenderedHtml = ref('')
+const docToc = ref<TocItem[]>([])
+
+function docsBaseForProject(projectName: string): string {
+  const p = encodeURIComponent(String(projectName || '').trim())
+  return `${getApiBase()}/projects/${p}/docs/`
+}
+
+function fileNameFromUrl(url: string | undefined): string {
+  const u = String(url || '').trim()
+  if (!u) return ''
+  const noHash = u.split('#')[0] ?? u
+  const parts = noHash.split('/')
+  return decodeURIComponent(parts[parts.length - 1] || noHash)
+}
+
+function scrollToDocHeading(id: string): void {
+  const root = docContentEl.value
+  if (!root) return
+  const target = root.querySelector(`[id="${id}"]`) as HTMLElement | null
+  if (!target) return
+  target.scrollIntoView({ behavior: 'smooth', block: 'start' })
+}
+
+async function openMarkdownDoc(urlInput: string, opts?: { hash?: string }): Promise<void> {
+  const url = String(urlInput || '').trim()
+  if (!url) return
+
+  docOpen.value = true
+  docLoading.value = true
+  docError.value = undefined
+  docUrl.value = url
+  docTitle.value = fileNameFromUrl(url)
+
+  try {
+    const res = await fetch(url)
+    if (!res.ok) {
+      const text = await res.text().catch(() => '')
+      throw new Error(text || `Failed to load markdown: ${res.status} ${res.statusText}`)
+    }
+
+    const markdown = await res.text()
+    const rendered = renderMarkdownWithToc(markdown)
+    docRenderedHtml.value = rendered.html
+    docToc.value = rendered.toc
+
+    if (opts?.hash) {
+      await nextTick()
+      const hash = String(opts.hash || '').trim()
+      if (hash) scrollToDocHeading(hash)
+    }
+  } catch (e) {
+    docError.value = e instanceof Error ? e.message : String(e)
+    docRenderedHtml.value = ''
+    docToc.value = []
+  } finally {
+    docLoading.value = false
+  }
+}
+
+function closeMarkdownDoc(): void {
+  docOpen.value = false
+  docLoading.value = false
+  docError.value = undefined
+  docUrl.value = undefined
+  docTitle.value = ''
+  docRenderedHtml.value = ''
+  docToc.value = []
+}
+
+function onAssistantMarkdownClick(evt: MouseEvent): void {
+  const href = extractAnchorHref(evt)
+  if (!href) return
+
+  // Keep external links from navigating away.
+  if (/^https?:\/\//i.test(href) && !isMarkdownDocLink(href)) {
+    evt.preventDefault()
+    window.open(href, '_blank', 'noopener')
+    return
+  }
+
+  if (!isMarkdownDocLink(href)) return
+  evt.preventDefault()
+
+  const base = docsBaseForProject(project.value)
+  const parts = splitMarkdownHref(href)
+  const resolved = resolveDocsUrl(parts.url, base)
+  openMarkdownDoc(resolved, { hash: parts.hash })
+}
+
+function onDocMarkdownClick(evt: MouseEvent): void {
+  const href = extractAnchorHref(evt)
+  if (!href) return
+
+  // In-document anchors scroll within the document panel.
+  if (href.startsWith('#')) {
+    evt.preventDefault()
+    scrollToDocHeading(href.slice(1))
+    return
+  }
+
+  const current = String(docUrl.value || '').trim()
+  const baseUrl = current ? current.replace(/[^/]+$/, '') : docsBaseForProject(project.value)
+
+  // Keep external links from navigating away.
+  if (/^https?:\/\//i.test(href) && !isMarkdownDocLink(href)) {
+    evt.preventDefault()
+    window.open(href, '_blank', 'noopener')
+    return
+  }
+
+  if (!isMarkdownDocLink(href)) return
+  evt.preventDefault()
+
+  const parts = splitMarkdownHref(href)
+  const resolved = resolveDocsUrl(parts.url, baseUrl)
+  openMarkdownDoc(resolved, { hash: parts.hash })
 }
 
 const selectedContextIndex = ref(0)
@@ -151,7 +387,12 @@ onMounted(startFromQueryIfNeeded)
                   class="max-w-3xl rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   :class="m.role === 'user' ? 'ml-auto bg-slate-50 text-slate-900' : 'mr-auto bg-white text-slate-900'"
                 >
-                  <div v-if="m.role === 'assistant'" class="chat-markdown" v-html="renderMarkdown(m.content)"></div>
+                  <div
+                    v-if="m.role === 'assistant'"
+                    class="chat-markdown"
+                    v-html="renderMarkdown(m.content)"
+                    @click="onAssistantMarkdownClick"
+                  ></div>
                   <div v-else class="whitespace-pre-wrap">{{ m.content }}</div>
                 </div>
               </div>
@@ -182,6 +423,60 @@ onMounted(startFromQueryIfNeeded)
             </div>
 
             <p v-if="thread.error" class="mt-4 text-sm text-red-700">{{ thread.error }}</p>
+          </div>
+
+          <!-- In-panel markdown document viewer + ToC (opened by clicking .md links) -->
+          <div v-if="docOpen" class="shrink-0 border-t border-slate-200 bg-white">
+            <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <div class="min-w-0">
+                <div class="truncate text-sm font-semibold text-slate-900" :title="docTitle || 'Document'">
+                  {{ docTitle || 'Document' }}
+                </div>
+                <div v-if="docUrl" class="truncate text-xs text-slate-600" :title="docUrl">{{ docUrl }}</div>
+              </div>
+              <button
+                type="button"
+                class="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"
+                @click="closeMarkdownDoc"
+              >
+                Close
+              </button>
+            </div>
+
+            <div class="flex h-80 min-h-0 overflow-hidden">
+              <div ref="docContentEl" class="min-w-0 flex-1 overflow-auto p-4">
+                <div v-if="docLoading" class="text-sm text-slate-600">Loading…</div>
+                <div v-else-if="docError" class="text-sm text-red-700">{{ docError }}</div>
+                <div
+                  v-else
+                  class="chat-markdown"
+                  v-html="docRenderedHtml"
+                  @click="onDocMarkdownClick"
+                ></div>
+              </div>
+
+              <aside class="w-64 shrink-0 border-l border-slate-200 bg-white">
+                <div class="border-b border-slate-200 px-4 py-3">
+                  <div class="text-sm font-semibold text-slate-900">On this page</div>
+                </div>
+                <div class="max-h-full overflow-auto p-4">
+                  <div v-if="docToc.length === 0" class="text-xs text-slate-600">No headings.</div>
+                  <nav v-else class="flex flex-col gap-2">
+                    <a
+                      v-for="item in docToc"
+                      :key="item.id"
+                      href="#"
+                      class="truncate text-xs text-slate-700 hover:underline"
+                      :class="tocIndentClass(item.level)"
+                      :title="item.text"
+                      @click.prevent="scrollToDocHeading(item.id)"
+                    >
+                      {{ item.text }}
+                    </a>
+                  </nav>
+                </div>
+              </aside>
+            </div>
           </div>
 
           <!-- Bottom input (pinned) -->

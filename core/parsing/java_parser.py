@@ -43,7 +43,18 @@ class JavaParser:
         self.parser = Parser()
         self.parser.set_language(self.java_language)
 
-    def parse_java_file(self, java_code: str) -> List[JavaMethod]:
+    def parse_java_file(self, java_code: str, *, file_path: Optional[str] = None) -> List[JavaMethod]:
+        """Parse a single Java source file and extract methods/constructors.
+
+        Args:
+            java_code: Full Java source text.
+            file_path: Optional path of the source file being parsed.
+                Used only to help generate stable, unique method IDs across a codebase.
+
+        Returns:
+            A list of parsed Java methods/constructors.
+        """
+
         tree = self.parser.parse(bytes(java_code, "utf8"))
         methods: List[JavaMethod] = []
 
@@ -56,10 +67,11 @@ class JavaParser:
 
         captures = query.captures(tree.root_node)
 
+        package_name = self._extract_package_name(tree.root_node, java_code)
+
         for node, capture_name in captures:
             method_type = "method" if capture_name == "method" else "constructor"
             signature = self._extract_signature(node, java_code)
-            method_id = self._generate_id(signature)
             code = java_code[node.start_byte : node.end_byte]
             calls = self._extract_calls(node, java_code)
             javadoc = self._extract_javadoc(node, java_code)
@@ -67,6 +79,15 @@ class JavaParser:
             # tree-sitter exposes 0-based (row, column) points.
             start_line = int(getattr(node, "start_point", (0, 0))[0]) + 1
             end_line = int(getattr(node, "end_point", (0, 0))[0]) + 1
+
+            enclosing_type = self._extract_enclosing_type_name(node, java_code)
+            method_id = self._generate_id(
+                signature,
+                package_name=package_name,
+                enclosing_type=enclosing_type,
+                start_line=start_line,
+                file_path=file_path,
+            )
 
             methods.append(
                 JavaMethod(
@@ -76,6 +97,7 @@ class JavaParser:
                     calls=calls,
                     code=code,
                     javadoc=javadoc,
+                    file_path=file_path,
                     start_line=start_line,
                     end_line=end_line,
                 )
@@ -96,10 +118,114 @@ class JavaParser:
 
         return " ".join(signature_parts).strip()
 
-    def _generate_id(self, signature: str) -> str:
-        cleaned = re.sub(r"\s+", "_", signature)
-        cleaned = re.sub(r"[^\w_]", "", cleaned)
+    def _generate_id(
+        self,
+        signature: str,
+        *,
+        package_name: Optional[str] = None,
+        enclosing_type: Optional[str] = None,
+        start_line: Optional[int] = None,
+        file_path: Optional[str] = None,
+    ) -> str:
+        """Generate a stable, codebase-unique identifier for a method.
+
+        Notes:
+            The previous implementation derived IDs only from the extracted signature,
+            which can collide across different classes/files (common in real codebases).
+            We include extra context to reduce collisions, while keeping IDs readable.
+
+        Args:
+            signature: Extracted method/constructor signature string.
+            package_name: Optional package name (e.g., "com.example").
+            enclosing_type: Optional enclosing type name (class/interface/enum/record).
+            start_line: Optional 1-based start line of the declaration.
+            file_path: Optional file path used as last-resort uniqueness salt.
+
+        Returns:
+            A lowercase, filesystem-safe identifier.
+        """
+
+        parts: List[str] = []
+        if package_name:
+            parts.append(package_name)
+        if enclosing_type:
+            parts.append(enclosing_type)
+
+        parts.append(signature)
+
+        # Line number makes collisions extremely unlikely even when signature extraction
+        # is imperfect or when the same signature appears in multiple files.
+        if start_line is not None:
+            parts.append(f"l{int(start_line)}")
+
+        # Include file path as a last-resort salt; it should already be stable within a repo.
+        if file_path:
+            parts.append(str(file_path))
+
+        raw = "::".join([p for p in parts if p])
+        cleaned = re.sub(r"\s+", "_", raw)
+        cleaned = re.sub(r"[^\w_:\-./]", "", cleaned)
+        cleaned = cleaned.replace("/", "_")
+        cleaned = cleaned.replace(".", "_")
+        cleaned = cleaned.replace(":", "_")
+        cleaned = cleaned.replace("-", "_")
+        cleaned = re.sub(r"_+", "_", cleaned).strip("_")
         return cleaned.lower()
+
+    def _extract_package_name(self, root_node, code: str) -> Optional[str]:
+        """Extract the package name for a compilation unit, if present.
+
+        Args:
+            root_node: Tree-sitter root node.
+            code: Full Java source text.
+
+        Returns:
+            Package name like "com.example" or None if absent.
+        """
+
+        try:
+            query = self.java_language.query(
+                """
+                (package_declaration
+                    (scoped_identifier) @pkg)
+                """
+            )
+            captures = query.captures(root_node)
+            for node, _ in captures:
+                name = code[node.start_byte : node.end_byte].strip()
+                if name:
+                    return name
+        except Exception:
+            return None
+        return None
+
+    def _extract_enclosing_type_name(self, node, code: str) -> Optional[str]:
+        """Find the closest enclosing type name (class/interface/enum/record).
+
+        Args:
+            node: Tree-sitter node for a method/constructor declaration.
+            code: Full Java source text.
+
+        Returns:
+            Enclosing type name (e.g., "MyService") or None.
+        """
+
+        current = getattr(node, "parent", None)
+        while current is not None:
+            if current.type in {
+                "class_declaration",
+                "interface_declaration",
+                "enum_declaration",
+                "record_declaration",
+                "annotation_type_declaration",
+            }:
+                # Most declarations include the simple name as an `identifier` child.
+                for child in getattr(current, "children", []) or []:
+                    if child.type == "identifier":
+                        name = code[child.start_byte : child.end_byte].strip()
+                        return name or None
+            current = getattr(current, "parent", None)
+        return None
 
     def _extract_calls(self, node, code: str) -> List[str]:
         calls: List[str] = []
