@@ -5,6 +5,7 @@ import os
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from config import AppConfig, apply_config_to_env, configure_logging, load_config
@@ -16,7 +17,26 @@ from router.api import router as api_router
 def create_app() -> FastAPI:
     fastapi_app = FastAPI(title="open-deepwiki", version="0.1.0")
 
-    fastapi_app.include_router(api_router, prefix="/v1")
+    # CORS middleware must be added before the application starts.
+    # Starlette raises if you call `add_middleware()` during the startup event.
+    try:
+        load_dotenv(override=False)
+        config_path = os.getenv("OPEN_DEEPWIKI_CONFIG")
+        config: AppConfig = load_config(config_path)
+        if bool(getattr(config, "cors_enabled", False)):
+            fastapi_app.add_middleware(
+                CORSMiddleware,
+                allow_origins=["*"],
+                allow_methods=["*"],
+                allow_headers=["*"],
+                allow_credentials=False,
+            )
+    except Exception:
+        # If config can't be loaded at import time, we keep the app bootable.
+        # Startup will surface the real configuration error.
+        pass
+
+    fastapi_app.include_router(api_router, prefix="/api/v1")
 
     @fastapi_app.on_event("startup")
     def _startup() -> None:
@@ -44,6 +64,7 @@ def create_app() -> FastAPI:
             fastapi_app.state.method_docs_maps = {}
             fastapi_app.state.retrievers = {}
             fastapi_app.state.project_overviews = {}
+            fastapi_app.state.indexing_statuses = {}
             fastapi_app.state.default_project = None
         except Exception as e:  # pragma: no cover
             logging.getLogger(__name__).exception("Failed to initialize vectorstore/retriever")

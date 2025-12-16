@@ -51,6 +51,44 @@ class TestSqliteCheckpointSaver(unittest.TestCase):
             assert tup is not None
             self.assertTrue(any(w[0] == "task-1" and w[1] == "note" and w[2] == "hello" for w in (tup.pending_writes or [])))
 
+    def test_delete_thread_namespace_removes_data(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = os.path.join(td, "checkpoints.sqlite3")
+            saver = SqliteCheckpointSaver(sqlite_path=db_path)
+
+            config = {"configurable": {"thread_id": "t1", "checkpoint_ns": "proj"}}
+            cp = empty_checkpoint()
+            cp["channel_values"] = {"x": 1}
+            cp["channel_versions"] = {"x": 1}
+
+            new_config = saver.put(config, cp, {"source": "input", "step": -1}, {"x": 1})
+            self.assertIsNotNone(saver.get_tuple(new_config))
+
+            saver.delete_thread_namespace(thread_id="t1", checkpoint_ns="proj")
+            self.assertIsNone(saver.get_tuple(new_config))
+
+    def test_list_threads_namespace_returns_distinct_sorted(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            db_path = os.path.join(td, "checkpoints.sqlite3")
+            saver = SqliteCheckpointSaver(sqlite_path=db_path)
+
+            # Two checkpoints in same namespace with different thread_ids.
+            for tid in ("b", "a"):
+                config = {"configurable": {"thread_id": tid, "checkpoint_ns": "proj"}}
+                cp = empty_checkpoint()
+                cp["channel_values"] = {"x": tid}
+                cp["channel_versions"] = {"x": 1}
+                saver.put(config, cp, {"source": "input", "step": -1}, {"x": 1})
+
+            # One checkpoint in another namespace.
+            config2 = {"configurable": {"thread_id": "z", "checkpoint_ns": "other"}}
+            cp2 = empty_checkpoint()
+            cp2["channel_values"] = {"x": 1}
+            cp2["channel_versions"] = {"x": 1}
+            saver.put(config2, cp2, {"source": "input", "step": -1}, {"x": 1})
+
+            self.assertEqual(saver.list_threads_namespace(checkpoint_ns="proj"), ["a", "b"])
+
 
 if __name__ == "__main__":
     unittest.main()

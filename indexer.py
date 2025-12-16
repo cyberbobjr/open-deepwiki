@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import logging
 import os
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
@@ -16,6 +17,46 @@ from core.parsing.tree_sitter_setup import setup_java_language
 
 
 logger = logging.getLogger(__name__)
+
+
+def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
+    """Parse CLI arguments for the indexer.
+
+    Args:
+        argv: Optional argument list (defaults to sys.argv).
+
+    Returns:
+        Parsed argparse namespace.
+    """
+
+    parser = argparse.ArgumentParser(description="Index a Java codebase into Chroma")
+    parser.add_argument(
+        "--config",
+        default=None,
+        help="Path to YAML config (defaults to OPEN_DEEPWIKI_CONFIG or open-deepwiki.yaml)",
+    )
+    parser.add_argument(
+        "--generate-docs",
+        action="store_true",
+        help="If set, also generate PROJECT_OVERVIEW.md after indexing",
+    )
+    parser.add_argument(
+        "--docs-output",
+        default="PROJECT_OVERVIEW.md",
+        help="Where to write the generated overview markdown (default: PROJECT_OVERVIEW.md)",
+    )
+    parser.add_argument(
+        "--docs-index",
+        action="store_true",
+        help="If set, also index the generated overview into Chroma (requires embeddings config)",
+    )
+    parser.add_argument(
+        "--docs-max-files",
+        type=int,
+        default=None,
+        help="Optional cap on number of Java files to summarize when generating docs",
+    )
+    return parser.parse_args(argv)
 
 
 def iter_java_files(root_dir: str) -> Iterable[Path]:
@@ -108,10 +149,11 @@ def index_codebase(config: AppConfig) -> int:
     return len(method_docs_map)
 
 
-def main() -> None:
+def main(argv: Optional[List[str]] = None) -> None:
     load_dotenv(override=False)
 
-    config_path = os.getenv("OPEN_DEEPWIKI_CONFIG")
+    args = _parse_args(argv)
+    config_path = args.config or os.getenv("OPEN_DEEPWIKI_CONFIG")
     config = load_config(config_path)
     configure_logging(config.debug_level)
 
@@ -129,6 +171,19 @@ def main() -> None:
 
     count = index_codebase(config)
     print(f"Indexed {count} methods")
+
+    if bool(getattr(args, "generate_docs", False)):
+        from generate_docs import generate_docs
+
+        output_path = Path(str(getattr(args, "docs_output", "PROJECT_OVERVIEW.md"))).resolve()
+        generate_docs(
+            root_dir=Path(config.java_codebase_dir).resolve(),
+            config=config,
+            output_path=output_path,
+            index_into_chroma=bool(getattr(args, "docs_index", False)),
+            max_files=getattr(args, "docs_max_files", None),
+        )
+        print(f"Wrote docs to {output_path}")
 
 
 if __name__ == "__main__":

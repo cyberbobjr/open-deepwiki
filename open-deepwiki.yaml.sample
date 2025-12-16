@@ -6,6 +6,11 @@ debug_level: INFO
 # FastAPI / Uvicorn settings (used when starting via `./venv/bin/python app.py`)
 api_port: 8000
 
+# CORS
+# If true, enables permissive CORS headers for browser clients (dev-friendly).
+# If false, no CORS middleware is installed.
+cors_enabled: false
+
 # JavaDoc generation
 # If an existing JavaDoc has fewer meaningful content lines than this value,
 # it will be replaced ("improved").
@@ -23,6 +28,17 @@ java_codebase_dir: ./fixtures
 # When set, indexed docs include metadata.project=<project_name> and API calls can
 # omit the `project` parameter to use this default.
 project_name: null
+
+# Documentation site output
+# Base directory where generated documentation artifacts are written.
+# The /index-directory endpoint will write:
+# - <docs_output_dir>/PROJECT_OVERVIEW.md
+# - <docs_output_dir>/docs/index.md
+# - <docs_output_dir>/docs/features/*.md
+docs_output_dir: OUTPUT
+
+# Feature docs generation tuning
+docs_feature_batch_size: 10
 
 # Optional: index one heuristic summary document per Java file.
 # Helps RAG answer file-level questions without reading every method.

@@ -9,6 +9,7 @@ def create_codebase_agent(
     root_dir: str,
     retriever: Any,
     checkpointer: Any,
+    llm: Optional[Any] = None,
     project_graph_sqlite_path: str = "./project_graph.sqlite3",
     default_project: Optional[str] = None,
     debug: bool = False,
@@ -19,6 +20,16 @@ def create_codebase_agent(
     Notes:
     - This creates an *agent* via `langchain.agents.create_agent`.
     - It still needs an underlying chat model (configured via `utils.chat.create_chat_model`).
+
+    Args:
+        root_dir: Root directory for filesystem tools.
+        retriever: Retriever used by the vector_search tool.
+        checkpointer: LangChain checkpointer instance.
+        llm: Optional pre-configured chat model. If omitted, uses `create_chat_model()`.
+        project_graph_sqlite_path: Path to the project graph SQLite store.
+        default_project: Optional default project scope.
+        debug: If true, enables debug mode for the agent.
+        system_prompt: Optional system prompt override.
     """
 
     from langchain.agents import create_agent
@@ -121,7 +132,7 @@ def create_codebase_agent(
     tools.append(project_graph_overview)
     tools.append(project_graph_neighbors)
 
-    llm = create_chat_model()
+    resolved_llm = llm or create_chat_model()
 
     prompt = system_prompt or (
         "You are a senior engineer assistant for a Java codebase. "
@@ -132,7 +143,7 @@ def create_codebase_agent(
     )
 
     return create_agent(
-        llm,
+        resolved_llm,
         tools=tools,
         system_prompt=prompt,
         checkpointer=checkpointer,

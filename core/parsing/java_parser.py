@@ -19,6 +19,8 @@ class JavaMethod:
     # Optional context filled by higher-level scanners (e.g. indexer scanning a directory)
     file_path: Optional[str] = None
     project: Optional[str] = None
+    start_line: Optional[int] = None
+    end_line: Optional[int] = None
 
 
 class JavaParser:
@@ -62,6 +64,10 @@ class JavaParser:
             calls = self._extract_calls(node, java_code)
             javadoc = self._extract_javadoc(node, java_code)
 
+            # tree-sitter exposes 0-based (row, column) points.
+            start_line = int(getattr(node, "start_point", (0, 0))[0]) + 1
+            end_line = int(getattr(node, "end_point", (0, 0))[0]) + 1
+
             methods.append(
                 JavaMethod(
                     id=method_id,
@@ -70,6 +76,8 @@ class JavaParser:
                     calls=calls,
                     code=code,
                     javadoc=javadoc,
+                    start_line=start_line,
+                    end_line=end_line,
                 )
             )
 

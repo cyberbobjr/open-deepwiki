@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Minimal Markdown formatting for chat messages */
+.chat-markdown {
+  white-space: normal;
+  word-break: break-word;
+  @apply text-sm leading-relaxed text-slate-900;
+}
+
+.chat-markdown :where(p) {
+  margin: 0;
+}
+
+.chat-markdown :where(p + p) {
+  margin-top: 0.5rem;
+}
+
+.chat-markdown :where(ul, ol) {
+  margin: 0.5rem 0 0.5rem;
+  padding: 0;
+  /* Tailwind preflight resets list-style; restore it inside markdown. */
+  @apply pl-5 text-slate-900;
+}
+
+.chat-markdown :where(ul) {
+  @apply list-disc list-outside;
+}
+
+.chat-markdown :where(ol) {
+  @apply list-decimal list-outside;
+}
+
+.chat-markdown :where(li) {
+  margin: 0.125rem 0;
+}
+
+.chat-markdown :where(li)::marker {
+  @apply text-slate-400;
+}
+
+.chat-markdown :where(pre) {
+  margin: 0.5rem 0 0;
+  padding: 0.5rem;
+  overflow: auto;
+  border-radius: 0.5rem;
+  @apply border border-slate-200 bg-slate-50;
+}
+
+.chat-markdown :where(code) {
+  @apply rounded bg-slate-100 px-1 py-0.5 font-mono;
+  font-size: 0.875em;
+}
+
+.chat-markdown :where(pre code) {
+  font-size: 0.8125em;
+  @apply bg-transparent p-0;
+}
+
+.chat-markdown :where(a) {
+  @apply underline decoration-slate-300 underline-offset-2;
+}
+
+.chat-markdown :where(a:hover) {
+  @apply decoration-slate-900;
+}
+
+.chat-markdown :where(h1, h2, h3) {
+  margin: 0.5rem 0 0.25rem;
+  font-weight: 600;
+  @apply tracking-tight;
+}
+
+.chat-markdown :where(h1) {
+  @apply text-lg;
+}
+
+.chat-markdown :where(h2) {
+  @apply text-base;
+}
+
+.chat-markdown :where(h3) {
+  @apply text-sm;
+}
+
+.chat-markdown :where(hr) {
+  @apply my-4 border-slate-200;
+}
+
+.chat-markdown :where(blockquote) {
+  @apply my-3 border-l-2 border-slate-200 pl-3 text-slate-700;
+}
+
+.chat-markdown :where(table) {
+  @apply my-3 w-full border-collapse;
+}
+
+.chat-markdown :where(th, td) {
+  @apply border border-slate-200 px-2 py-1 align-top;
+}
+
+.chat-markdown :where(th) {
+  @apply bg-slate-50 text-left font-semibold;
+}

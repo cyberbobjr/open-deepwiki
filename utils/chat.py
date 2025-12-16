@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Sequence
 
 from langchain_openai import ChatOpenAI
 
@@ -10,13 +10,29 @@ def create_chat_model(
     base_url: Optional[str] = None,
     model: Optional[str] = None,
     temperature: float = 0.0,
-) -> Any:
+    streaming: bool = False,
+    callbacks: Optional[Sequence[Any]] = None,
+) -> ChatOpenAI:
     """Create a chat LLM.
 
     Uses environment variables by default:
     - OPENAI_CHAT_MODEL (fallback if `model` is None)
     - OPENAI_API_KEY
     - OPENAI_CHAT_API_BASE (fallback if `base_url` is None)
+
+    Args:
+        base_url: Explicit LLM base URL. If omitted, uses OPENAI_CHAT_API_BASE.
+        model: Explicit model name. If omitted, uses OPENAI_CHAT_MODEL.
+        temperature: Sampling temperature.
+        streaming: If true, enables token streaming.
+        callbacks: Optional LangChain callback handlers for streaming / tracing.
+
+    Returns:
+        A configured `ChatOpenAI` instance.
+
+    Raises:
+        ValueError: If the chat model or base URL is not configured.
+        TypeError: If the installed ChatOpenAI does not accept base URL parameters.
     """
 
     selected_model = model or os.getenv("OPENAI_CHAT_MODEL")
@@ -34,7 +50,11 @@ def create_chat_model(
     kwargs: Dict[str, Any] = {
         "model": selected_model,
         "temperature": temperature,
+        "streaming": bool(streaming),
     }
+
+    if callbacks is not None:
+        kwargs["callbacks"] = list(callbacks)
 
     for key in ("base_url", "openai_api_base"):
         try:

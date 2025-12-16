@@ -48,6 +48,8 @@ def index_java_methods(methods: List[JavaMethod], vectorstore: Chroma) -> Dict[s
     for method in methods:
         project: Optional[str] = getattr(method, "project", None)
         file_path: Optional[str] = getattr(method, "file_path", None)
+        start_line: Optional[int] = getattr(method, "start_line", None)
+        end_line: Optional[int] = getattr(method, "end_line", None)
 
         scoped_id = f"{project}::{method.id}" if project else method.id
 
@@ -79,6 +81,8 @@ def index_java_methods(methods: List[JavaMethod], vectorstore: Chroma) -> Dict[s
                 "has_javadoc": method.javadoc is not None,
                 "project": project,
                 "file_path": file_path,
+                "start_line": start_line,
+                "end_line": end_line,
                 "doc_type": "java_method",
             },
         )
@@ -148,7 +152,14 @@ def index_java_file_summaries(methods: List[JavaMethod], vectorstore: Chroma) ->
     return out
 
 
-def index_project_overview(*, project: Optional[str], overview_text: str, vectorstore: Chroma) -> Document:
+def index_project_overview(
+    *,
+    project: Optional[str],
+    overview_text: str,
+    vectorstore: Chroma,
+    indexed_path: Optional[str] = None,
+    indexed_at: Optional[str] = None,
+) -> Document:
     """Index a single "project overview" document for a project scope.
 
     This document is meant to provide an always-available big-picture context that can
@@ -157,13 +168,19 @@ def index_project_overview(*, project: Optional[str], overview_text: str, vector
 
     scoped_id = f"{project}::project::overview" if project else "project::overview"
 
+    metadata: Dict[str, Optional[str]] = {
+        "scoped_id": scoped_id,
+        "project": project,
+        "doc_type": "project_overview",
+    }
+    if indexed_path is not None:
+        metadata["indexed_path"] = str(indexed_path)
+    if indexed_at is not None:
+        metadata["indexed_at"] = str(indexed_at)
+
     doc = Document(
         page_content=str(overview_text or "").strip(),
-        metadata={
-            "scoped_id": scoped_id,
-            "project": project,
-            "doc_type": "project_overview",
-        },
+        metadata=metadata,
     )
 
     _safe_add_documents(vectorstore, [doc], ids=[scoped_id])

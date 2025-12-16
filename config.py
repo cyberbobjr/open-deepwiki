@@ -22,10 +22,24 @@ class AppConfig(BaseModel):
     # FastAPI / Uvicorn
     api_port: int = 8000
 
+    # CORS
+    # If True, enables permissive CORS headers for browser clients (dev-friendly).
+    # When False, no CORS middleware is installed.
+    cors_enabled: bool = False
+
     # JavaDoc generation
     # Existing JavaDoc blocks with fewer than this number of "meaningful" content lines
     # will be regenerated (replaced). See core/documentation/javadoc_generator.py.
     javadoc_min_meaningful_lines: int = 3
+
+    # Documentation site output
+    # Base directory where generated docs artifacts are written.
+    # Used by both CLI generation and the /index-directory route.
+    docs_output_dir: str = "OUTPUT"
+
+    # Feature docs generation tuning
+    # Number of file summaries to classify per LLM call when building feature pages.
+    docs_feature_batch_size: int = 10
 
     # Chroma
     # Chroma enables anonymized telemetry by default; set this to False to opt out.

@@ -391,7 +391,60 @@ class SqliteCheckpointSaver(BaseCheckpointSaver[str]):
                 )
 
     def delete_thread(self, thread_id: str) -> None:
+        """Delete all persisted data for a thread across all namespaces.
+
+        Args:
+            thread_id: Conversation/session identifier.
+        """
+
         with self._connect() as conn:
             conn.execute("DELETE FROM writes WHERE thread_id=?", (thread_id,))
             conn.execute("DELETE FROM blobs WHERE thread_id=?", (thread_id,))
             conn.execute("DELETE FROM checkpoints WHERE thread_id=?", (thread_id,))
+
+    def delete_thread_namespace(self, *, thread_id: str, checkpoint_ns: str) -> None:
+        """Delete persisted data for a thread within a single namespace.
+
+        This is used to delete a single conversation history scoped to a project.
+
+        Args:
+            thread_id: Conversation/session identifier.
+            checkpoint_ns: Namespace (project scope).
+        """
+
+        with self._connect() as conn:
+            conn.execute(
+                "DELETE FROM writes WHERE thread_id=? AND checkpoint_ns=?",
+                (thread_id, checkpoint_ns),
+            )
+            conn.execute(
+                "DELETE FROM blobs WHERE thread_id=? AND checkpoint_ns=?",
+                (thread_id, checkpoint_ns),
+            )
+            conn.execute(
+                "DELETE FROM checkpoints WHERE thread_id=? AND checkpoint_ns=?",
+                (thread_id, checkpoint_ns),
+            )
+
+    def list_threads_namespace(self, *, checkpoint_ns: str) -> list[str]:
+        """List distinct thread ids that have checkpoints in a namespace.
+
+        Args:
+            checkpoint_ns: Namespace (project scope).
+
+        Returns:
+            Sorted list of distinct thread_ids.
+        """
+
+        ns = str(checkpoint_ns or "")
+        if not ns:
+            return []
+
+        with self._connect() as conn:
+            rows = conn.execute(
+                "SELECT DISTINCT thread_id FROM checkpoints WHERE checkpoint_ns=?",
+                (ns,),
+            ).fetchall()
+
+        values = [str(r[0]) for r in rows if r and r[0] is not None]
+        return sorted({v.strip() for v in values if v.strip()})

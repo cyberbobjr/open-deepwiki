@@ -135,16 +135,16 @@ uvicorn app:app --reload --port 8000
 ```
 
 Endpoints :
-- `GET /v1/health`
-- `POST /v1/query` with `{ "query": "...", "k": 4, "project": "..." }` (`project` required)
-- `POST /v1/ask` with `{ "question": "...", "k": 4, "project": "...", "session_id": "..." }` (chat + history)
-- `POST /v1/index-directory` with `{ "path": "...", "project": "...", "reindex": true }` (recursive `.java` indexing)
-- `GET /v1/projects` (list indexed project scopes)
+- `GET /api/v1/health`
+- `POST /api/v1/query` with `{ "query": "...", "k": 4, "project": "..." }` (`project` required)
+- `POST /api/v1/ask` with `{ "question": "...", "k": 4, "project": "...", "session_id": "..." }` (chat + history)
+- `POST /api/v1/index-directory` with `{ "path": "...", "project": "...", "reindex": true }` (recursive `.java` indexing)
+- `GET /api/v1/projects` (list indexed project scopes)
 
 Project-in-path endpoints (same scoping, but project comes from URL path):
-- `POST /v1/projects/{project}/query` with `{ "query": "...", "k": 4 }`
-- `POST /v1/projects/{project}/ask` with `{ "question": "...", "k": 4, "session_id": "..." }`
-- `POST /v1/projects/{project}/index-directory` with `{ "path": "...", "reindex": true }`
+- `POST /api/v1/projects/{project}/query` with `{ "query": "...", "k": 4 }`
+- `POST /api/v1/projects/{project}/ask` with `{ "question": "...", "k": 4, "session_id": "..." }`
+- `POST /api/v1/projects/{project}/index-directory` with `{ "path": "...", "reindex": true }`
 
 Implementation: routes are in `router/api.py` (mounted by `app.py`).
 
@@ -153,19 +153,19 @@ Utilities: Chroma vectorstore creation and method doc loading are in `utils/vect
 Example:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/query \
+curl -X POST http://127.0.0.1:8000/api/v1/query \
     -H 'Content-Type: application/json' \
     -d '{"query":"create user","k":4,"project":"my-project"}'
 ```
 
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/ask \
+curl -X POST http://127.0.0.1:8000/api/v1/ask \
     -H 'Content-Type: application/json' \
     -d '{"question":"How do I create a new user?","k":4,"project":"my-project"}'
 
 # Continue the conversation with a session_id (returned in the previous response)
-curl -X POST http://127.0.0.1:8000/v1/ask \
+curl -X POST http://127.0.0.1:8000/api/v1/ask \
     -H 'Content-Type: application/json' \
     -d '{"question":"Where is validation done?","k":4,"project":"my-project","session_id":"<paste-session-id>"}'
 ```
@@ -173,7 +173,7 @@ curl -X POST http://127.0.0.1:8000/v1/ask \
 Recursive directory indexing (useful to index a different codebase than the one in YAML):
 
 ```bash
-curl -X POST http://127.0.0.1:8000/v1/index-directory \
+curl -X POST http://127.0.0.1:8000/api/v1/index-directory \
         -H 'Content-Type: application/json' \
     -d '{"path":"./fixtures","project":"my-project","reindex":true,"include_file_summaries":true}'
 ```
