@@ -5,6 +5,33 @@ let mermaidPromise: Promise<any> | null = null
 let mermaidInitialized = false
 let renderSeq = 0
 
+function sanitizeMermaidSource(input: string): string {
+  const raw = String(input ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+  // LLMs sometimes inject placeholder text like "(...)" or empty "()" tokens.
+  // We only remove the placeholder variants because parentheses are valid Mermaid syntax
+  // (e.g. flowchart node shapes), and stripping all parentheses would break diagrams.
+  const withoutPlaceholders = raw
+    // Remove "(...)" / "( ... )" / "(…)" anywhere.
+    .replace(/\(\s*(?:\.\.\.|…)+\s*\)/g, '')
+
+  const lines = withoutPlaceholders.split('\n')
+  const cleanedLines: string[] = []
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // Drop standalone placeholder lines.
+    if (trimmed === '()') continue
+    if (trimmed === '(...)' || trimmed === '( … )' || trimmed === '(…)') continue
+
+    // Drop trailing placeholder tokens like " --> B (...)".
+    const strippedTrailing = line.replace(/\s*\(\s*(?:\.\.\.|…)?\s*\)\s*$/g, '')
+    cleanedLines.push(strippedTrailing)
+  }
+
+  return cleanedLines.join('\n').trim()
+}
+
 async function getMermaid(): Promise<any> {
   if (!mermaidPromise) {
     mermaidPromise = import('mermaid').then((m) => (m as any).default ?? (m as any))
@@ -41,7 +68,7 @@ export function installMermaidFence(md: any): void {
     const info = firstWord.toLowerCase()
 
     if (info === 'mermaid') {
-      const content = String(token?.content ?? '')
+      const content = sanitizeMermaidSource(String(token?.content ?? ''))
       const escaped = md.utils.escapeHtml(content)
       return `<div class="mermaid">${escaped}</div>`
     }
@@ -62,7 +89,7 @@ export async function renderMermaidInRoot(root: HTMLElement | null): Promise<voi
   for (const node of nodes) {
     if (node.dataset.mermaidRendered === 'true') continue
 
-    const source = String(node.textContent ?? '').trim()
+    const source = sanitizeMermaidSource(String(node.textContent ?? ''))
     node.dataset.mermaidRendered = 'true'
 
     if (!source) continue
