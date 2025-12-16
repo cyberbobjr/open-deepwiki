@@ -4,7 +4,7 @@ import argparse
 import logging
 import os
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional, Protocol
 
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
@@ -17,6 +17,19 @@ from core.parsing.tree_sitter_setup import setup_java_language
 
 
 logger = logging.getLogger(__name__)
+
+
+class JavaParserLike(Protocol):
+    """Structural type for parsers that can extract Java methods.
+
+    This allows `scan_java_methods()` to be tested with a lightweight stub without
+    requiring tree-sitter to be present.
+    """
+
+    def parse_java_file(self, java_code: str, *, file_path: Optional[str] = None) -> List[JavaMethod]:
+        """Parse a Java source file and return extracted methods."""
+
+        ...
 
 
 def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -127,13 +140,25 @@ def iter_java_files(root_dir: str, *, exclude_tests: bool = True) -> Iterable[Pa
             yield path
 
 
-def scan_java_methods(codebase_dir: str, parser: JavaParser, *, exclude_tests: bool = True) -> List[JavaMethod]:
+def scan_java_methods(
+    codebase_dir: str,
+    parser: JavaParserLike,
+    *,
+    exclude_tests: bool = True,
+    progress_callback: Optional[Callable[[int, int, Optional[str]], None]] = None,
+) -> List[JavaMethod]:
     """Scan a directory for Java files and parse methods/constructors.
 
     Args:
         codebase_dir: Root directory to scan.
         parser: Initialized JavaParser (tree-sitter backed).
-        exclude_tests: If True (default), excludes test-related Java files.
+        exclude_tests: If True (default), excludes Java files located under a directory
+            named "test".
+        progress_callback: Optional callback invoked during scanning to report progress.
+            The callback is called as: (processed_files, total_files, current_file).
+            - processed_files: Number of files completed so far.
+            - total_files: Total number of Java files that will be scanned.
+            - current_file: Path of the file that was just processed (or None at start).
 
     Returns:
         List of parsed JavaMethod objects.
@@ -142,13 +167,22 @@ def scan_java_methods(codebase_dir: str, parser: JavaParser, *, exclude_tests: b
     methods: List[JavaMethod] = []
 
     files = list(iter_java_files(codebase_dir, exclude_tests=exclude_tests))
-    logger.info("Scanning %d Java files under %s", len(files), codebase_dir)
+    total_files = len(files)
+    logger.info("Scanning %d Java files under %s", total_files, codebase_dir)
+
+    if progress_callback is not None:
+        progress_callback(0, total_files, None)
+
+    processed_files = 0
 
     for path in files:
         try:
             java_code = path.read_text(encoding="utf-8")
         except Exception as e:
             logger.warning("Skipping unreadable file %s: %s", path, e)
+            processed_files += 1
+            if progress_callback is not None:
+                progress_callback(processed_files, total_files, str(path))
             continue
 
         try:
@@ -156,7 +190,17 @@ def scan_java_methods(codebase_dir: str, parser: JavaParser, *, exclude_tests: b
             methods.extend(file_methods)
         except Exception as e:
             logger.warning("Skipping unparsable file %s: %s", path, e)
+            processed_files += 1
+            if progress_callback is not None:
+                progress_callback(processed_files, total_files, str(path))
             continue
+
+        processed_files += 1
+        if progress_callback is not None:
+            progress_callback(processed_files, total_files, str(path))
+
+    if progress_callback is not None:
+        progress_callback(processed_files, total_files, "")
 
     return methods
 

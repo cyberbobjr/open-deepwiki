@@ -5,6 +5,8 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import DOMPurify from 'dompurify'
 import * as MarkdownIt from 'markdown-it'
 
+import { installMermaidFence, renderMermaidInRoot } from '../utils/mermaid'
+
 import { getProjectDocsIndex, getProjectOverview, type ProjectDocsIndexResponse } from '../api/openDeepWiki'
 
 const route = useRoute()
@@ -29,10 +31,28 @@ const contentEl = ref<HTMLElement | null>(null)
 const renderedHtml = ref('')
 const toc = ref<TocItem[]>([])
 
+const tocCollapsed = ref(true)
+
 const question = ref('')
+
+watch(
+  () => renderedHtml.value,
+  () => scheduleMermaidRender(),
+)
 
 const MarkdownItCtor: any = (MarkdownIt as any).default ?? (MarkdownIt as any)
 const md = new MarkdownItCtor({ linkify: true, breaks: true, html: false })
+installMermaidFence(md)
+
+let mermaidTimer: number | undefined
+
+function scheduleMermaidRender(): void {
+  if (mermaidTimer) window.clearTimeout(mermaidTimer)
+  mermaidTimer = window.setTimeout(async () => {
+    await nextTick()
+    await renderMermaidInRoot(contentEl.value)
+  }, 50)
+}
 
 function getApiBase(): string {
   const base = (import.meta.env.VITE_API_BASE as string | undefined) ?? '/api/v1'
@@ -741,12 +761,36 @@ onMounted(load)
               <div v-else class="chat-markdown" v-html="renderedHtml" @click="onMarkdownClick"></div>
             </div>
 
-            <aside class="w-72 shrink-0 border-l border-slate-200 bg-white">
-              <div class="border-b border-slate-200 px-4 py-3">
-                <div class="text-sm font-semibold text-slate-900">On this page</div>
+            <aside
+              class="shrink-0 border-l border-slate-200 bg-white"
+              :class="tocCollapsed ? 'w-12' : 'w-72'"
+            >
+              <div class="border-b border-slate-200" :class="tocCollapsed ? 'p-2' : 'px-2 py-2'">
+                <div v-if="!tocCollapsed" class="flex items-center justify-between gap-2">
+                  <div class="text-sm font-semibold text-slate-900">On this page</div>
+                  <button
+                    type="button"
+                    class="h-8 w-8 rounded-md border border-slate-200 bg-white text-xs text-slate-700"
+                    title="Collapse"
+                    @click="tocCollapsed = true"
+                  >
+                    &lt;
+                  </button>
+                </div>
+
+                <div v-else class="flex items-center justify-center">
+                  <button
+                    type="button"
+                    class="h-8 w-8 rounded-md border border-slate-200 bg-white text-xs text-slate-700"
+                    title="Expand"
+                    @click="tocCollapsed = false"
+                  >
+                    &gt;
+                  </button>
+                </div>
               </div>
 
-              <div class="max-h-full overflow-auto p-4">
+              <div v-if="!tocCollapsed" class="max-h-full overflow-auto p-4">
                 <div v-if="toc.length === 0" class="text-xs text-slate-600">No headings.</div>
                 <nav v-else class="flex flex-col gap-2">
                   <a

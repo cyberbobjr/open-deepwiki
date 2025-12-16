@@ -20,6 +20,10 @@ export type IndexingStatusResponse = {
   started_at?: string | null
   finished_at?: string | null
   error?: string | null
+  total_files?: number | null
+  processed_files?: number | null
+  remaining_files?: number | null
+  current_file?: string | null
 }
 
 export type ProjectInfo = {

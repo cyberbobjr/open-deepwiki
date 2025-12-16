@@ -96,6 +96,23 @@ class IndexingStatusResponse(BaseModel):
         description="Error message if the last run failed (status is still 'done').",
     )
 
+    total_files: Optional[int] = Field(
+        default=None,
+        description="Total number of Java files to scan for the current/last run (if known).",
+    )
+    processed_files: Optional[int] = Field(
+        default=None,
+        description="Number of Java files already processed for the current run (if known).",
+    )
+    remaining_files: Optional[int] = Field(
+        default=None,
+        description="Number of Java files remaining for the current run (if known).",
+    )
+    current_file: Optional[str] = Field(
+        default=None,
+        description="Best-effort path of the file most recently processed (or being processed).",
+    )
+
 
 class ProjectOverviewResponse(BaseModel):
     """Return the latest stored project overview for a scope."""

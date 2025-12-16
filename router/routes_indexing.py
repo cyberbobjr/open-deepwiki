@@ -28,6 +28,10 @@ def _set_indexing_status(
     started_at: Optional[str] = None,
     finished_at: Optional[str] = None,
     error: Optional[str] = None,
+    total_files: Optional[int] = None,
+    processed_files: Optional[int] = None,
+    remaining_files: Optional[int] = None,
+    current_file: Optional[str] = None,
 ) -> None:
     """Update in-memory indexing status for a project.
 
@@ -38,6 +42,10 @@ def _set_indexing_status(
         started_at: ISO timestamp when the job started.
         finished_at: ISO timestamp when the job finished.
         error: Optional error string if the job failed.
+        total_files: Optional total number of Java files that will be scanned.
+        processed_files: Optional number of files already processed.
+        remaining_files: Optional number of files remaining.
+        current_file: Optional file path currently being processed (best-effort).
     """
 
     statuses = getattr(request.app.state, "indexing_statuses", None)
@@ -45,13 +53,28 @@ def _set_indexing_status(
         request.app.state.indexing_statuses = {}
         statuses = request.app.state.indexing_statuses
 
-    statuses[project] = {
-        "project": project,
-        "status": status,
-        "started_at": started_at,
-        "finished_at": finished_at,
-        "error": error,
-    }
+    existing = statuses.get(project)
+    entry: Dict[str, Any] = existing if isinstance(existing, dict) else {}
+    entry["project"] = project
+    entry["status"] = status
+    if started_at is not None:
+        entry["started_at"] = started_at
+    if finished_at is not None:
+        entry["finished_at"] = finished_at
+
+    # Allow clearing errors by explicitly setting error=None.
+    entry["error"] = error
+
+    if total_files is not None:
+        entry["total_files"] = int(total_files)
+    if processed_files is not None:
+        entry["processed_files"] = int(processed_files)
+    if remaining_files is not None:
+        entry["remaining_files"] = int(remaining_files)
+    if current_file is not None:
+        entry["current_file"] = current_file
+
+    statuses[project] = entry
 
 
 def _get_indexing_status(request: Request, *, project: str) -> Dict[str, Any]:
@@ -121,10 +144,24 @@ def _run_index_directory_job(
             setup_java_language()
             parser = JavaParser()
             config = getattr(request.app.state, "config", None)
+
+            def _progress(processed: int, total: int, current_file: Optional[str]) -> None:
+                remaining = max(int(total) - int(processed), 0)
+                _set_indexing_status(
+                    request,
+                    project=project,
+                    status="in_progress",
+                    total_files=int(total),
+                    processed_files=int(processed),
+                    remaining_files=int(remaining),
+                    current_file=current_file,
+                )
+
             methods = scan_java_methods(
                 str(directory),
                 parser,
                 exclude_tests=bool(getattr(config, "index_exclude_tests", True)),
+                progress_callback=_progress,
             )
             if project:
                 for m in methods:
@@ -342,6 +379,10 @@ def get_index_status(request: Request, project: str) -> IndexingStatusResponse:
         started_at=value.get("started_at"),
         finished_at=value.get("finished_at"),
         error=value.get("error"),
+        total_files=value.get("total_files"),
+        processed_files=value.get("processed_files"),
+        remaining_files=value.get("remaining_files"),
+        current_file=value.get("current_file"),
     )
 
 

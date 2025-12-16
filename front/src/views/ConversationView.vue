@@ -5,6 +5,8 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import DOMPurify from 'dompurify'
 import * as MarkdownIt from 'markdown-it'
 
+import { installMermaidFence, renderMermaidInRoot } from '../utils/mermaid'
+
 import { useChatStore } from '../stores/chat'
 import type { QueryResult } from '../api/openDeepWiki'
 
@@ -23,6 +25,7 @@ const messagesEl = ref<HTMLElement | null>(null)
 
 const MarkdownItCtor: any = (MarkdownIt as any).default ?? (MarkdownIt as any)
 const md = new MarkdownItCtor({ linkify: true, breaks: true, html: false })
+installMermaidFence(md)
 
 type TocItem = {
   id: string
@@ -138,6 +141,17 @@ function splitMarkdownHref(href: string): { url: string; hash?: string } {
 function renderMarkdown(text: string): string {
   const raw = md.render(text ?? '')
   return DOMPurify.sanitize(raw)
+}
+
+let mermaidTimer: number | undefined
+
+function scheduleMermaidRender(): void {
+  if (mermaidTimer) window.clearTimeout(mermaidTimer)
+  mermaidTimer = window.setTimeout(async () => {
+    await nextTick()
+    await renderMermaidInRoot(messagesEl.value)
+    await renderMermaidInRoot(docContentEl.value)
+  }, 50)
 }
 
 const docOpen = ref(false)
@@ -290,6 +304,17 @@ watch(
   },
 )
 
+watch(
+  () => messages.value,
+  () => scheduleMermaidRender(),
+  { deep: true },
+)
+
+watch(
+  () => docRenderedHtml.value,
+  () => scheduleMermaidRender(),
+)
+
 const selectedContext = computed<QueryResult | undefined>(() => {
   const ctx: QueryResult[] = thread.value.context ?? []
   const idx = Math.max(0, Math.min(selectedContextIndex.value, ctx.length - 1))
@@ -356,6 +381,8 @@ async function startFromQueryIfNeeded(): Promise<void> {
 }
 
 onMounted(startFromQueryIfNeeded)
+
+onMounted(() => scheduleMermaidRender())
 </script>
 
 <template>
