@@ -73,6 +73,17 @@ class AppConfig(BaseModel):
     # Default is False for compatibility.
     embeddings_check_ctx_length: bool = False
 
+    # Embeddings input size protection
+    # If set, embedding inputs are truncated to at most this many tokens *before* sending
+    # to the embedding provider. This helps avoid provider-side "input too long" errors.
+    # When enabled, tokenization is performed with tiktoken.
+    embeddings_max_input_tokens: Optional[int] = None
+
+    # Optional: tiktoken encoding name used when applying `embeddings_max_input_tokens`.
+    # If not set, the code will try `tiktoken.encoding_for_model(OPENAI_EMBEDDING_MODEL)` and
+    # fall back to `cl100k_base` if the model is unknown.
+    embeddings_token_encoding: Optional[str] = None
+
     # SSL / TLS
     # Path to a PEM file containing root CA certificates to trust for outbound HTTPS.
     # When set, this is applied to common env vars used by requests/urllib3 and many
@@ -136,6 +147,20 @@ def apply_config_to_env(config: AppConfig) -> None:
         os.environ["OPEN_DEEPWIKI_EMBEDDINGS_CHECK_CTX_LENGTH"] = (
             "true" if bool(config.embeddings_check_ctx_length) else "false"
         )
+
+    # Optional: enforce a maximum number of tokens per embedding input.
+    # Consumed by core.rag.embeddings.create_embeddings().
+    max_tokens = getattr(config, "embeddings_max_input_tokens", None)
+    if max_tokens is not None and not os.getenv("OPEN_DEEPWIKI_EMBEDDINGS_MAX_INPUT_TOKENS"):
+        if int(max_tokens) <= 0:
+            raise ValueError(
+                "Invalid embeddings_max_input_tokens (must be a positive integer when set)."
+            )
+        os.environ["OPEN_DEEPWIKI_EMBEDDINGS_MAX_INPUT_TOKENS"] = str(int(max_tokens))
+
+    token_encoding = getattr(config, "embeddings_token_encoding", None)
+    if token_encoding and not os.getenv("OPEN_DEEPWIKI_EMBEDDINGS_TOKEN_ENCODING"):
+        os.environ["OPEN_DEEPWIKI_EMBEDDINGS_TOKEN_ENCODING"] = str(token_encoding)
 
     if getattr(config, "chat_model", None) and not os.getenv("OPENAI_CHAT_MODEL"):
         os.environ["OPENAI_CHAT_MODEL"] = str(config.chat_model)

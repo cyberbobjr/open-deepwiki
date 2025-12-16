@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 
-import type { DeleteProjectResponse } from '../api/openDeepWiki'
+import { getIndexStatus, type DeleteProjectResponse, type ProjectInfo } from '../api/openDeepWiki'
 import ConfirmModal from '../components/ConfirmModal.vue'
 import IndexDirectoryForm from '../components/IndexDirectoryForm.vue'
 import { useProjectsStore } from '../stores/projects'
@@ -43,6 +43,58 @@ const modalMessage = computed(() => {
   return `${base}\n\nError: ${projectsStore.error}`
 })
 
+const indexingByProject = ref<Record<string, 'in_progress' | 'done'>>({})
+
+function isIndexing(project: string): boolean {
+  return indexingByProject.value[project] === 'in_progress'
+}
+
+function upsertProject(project: ProjectInfo): void {
+  const idx = projectsStore.projects.findIndex((p) => p.project === project.project)
+  if (idx >= 0) {
+    projectsStore.projects[idx] = { ...projectsStore.projects[idx], ...project }
+  } else {
+    projectsStore.projects.unshift(project)
+  }
+}
+
+async function refreshIndexingStatusFor(project: string): Promise<void> {
+  const p = project.trim()
+  if (!p) return
+  try {
+    const s = await getIndexStatus(p)
+    indexingByProject.value[p] = s.status
+  } catch {
+    // Keep previous status if the status endpoint is unavailable.
+  }
+}
+
+let pollingTimer: number | null = null
+
+function startPollingIndexing(): void {
+  if (pollingTimer !== null) return
+  pollingTimer = window.setInterval(async () => {
+    const inProgress = Object.entries(indexingByProject.value)
+      .filter(([, status]) => status === 'in_progress')
+      .map(([project]) => project)
+
+    if (inProgress.length === 0) return
+
+    for (const p of inProgress) {
+      await refreshIndexingStatusFor(p)
+      if (!isIndexing(p)) {
+        await projectsStore.refresh()
+      }
+    }
+  }, 2000)
+}
+
+function stopPollingIndexing(): void {
+  if (pollingTimer === null) return
+  window.clearInterval(pollingTimer)
+  pollingTimer = null
+}
+
 function requestDeleteProject(project: string): void {
   const p = project.trim()
   if (!p) return
@@ -71,6 +123,14 @@ async function confirmDeleteProject(): Promise<void> {
 
 onMounted(async () => {
   await projectsStore.refresh()
+  for (const p of projectsStore.projects) {
+    await refreshIndexingStatusFor(p.project)
+  }
+  startPollingIndexing()
+})
+
+onUnmounted(() => {
+  stopPollingIndexing()
 })
 </script>
 
@@ -94,7 +154,17 @@ onMounted(async () => {
     </div>
 
     <div class="mt-6">
-      <IndexDirectoryForm @indexed="projectsStore.refresh()" />
+      <IndexDirectoryForm
+        @indexingStarted="(e) => {
+          upsertProject({ project: e.project, indexed_path: e.path, indexed_at: null })
+          indexingByProject[e.project] = e.status
+          startPollingIndexing()
+        }"
+        @indexingStatus="(e) => {
+          indexingByProject[e.project] = e.status
+        }"
+        @indexed="projectsStore.refresh()"
+      />
     </div>
 
     <div class="mt-10">
@@ -116,9 +186,11 @@ onMounted(async () => {
         <div
           v-for="p in projectsStore.projects"
           :key="p.project"
-          class="group relative aspect-square rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-slate-300"
+          class="group relative min-h-40 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition"
+          :class="isIndexing(p.project) ? 'opacity-60' : 'hover:border-slate-300'"
         >
           <RouterLink
+            v-if="!isIndexing(p.project)"
             :to="{ name: 'project', params: { project: p.project } }"
             class="block h-full"
           >
@@ -135,9 +207,24 @@ onMounted(async () => {
             </div>
           </RouterLink>
 
+          <div v-else class="flex h-full flex-col justify-between gap-3" aria-disabled="true">
+            <div class="text-center">
+              <div class="text-base font-medium text-slate-900">{{ p.project }}</div>
+              <div class="mt-3 flex items-center justify-center gap-2 text-sm text-slate-600">
+                <div class="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-900" />
+                <span>Indexing…</span>
+              </div>
+            </div>
+
+            <div class="text-xs text-slate-600">
+              <div class="truncate" v-if="p.indexed_path" :title="p.indexed_path">{{ p.indexed_path }}</div>
+              <div class="text-slate-500">Indexed: pending</div>
+            </div>
+          </div>
+
           <button
             class="absolute right-3 top-3 h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-red-700 disabled:opacity-60"
-            :disabled="projectsStore.loading || projectsStore.deletingProject === p.project"
+            :disabled="projectsStore.loading || projectsStore.deletingProject === p.project || isIndexing(p.project)"
             @click.prevent.stop="requestDeleteProject(p.project)"
             title="Delete project"
           >

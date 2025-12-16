@@ -73,6 +73,19 @@ llm_api_key: null # mets la clé ici, ou préfère l’env `OPENAI_API_KEY`
 # Default is false (string inputs).
 embeddings_check_ctx_length: false
 
+# Embeddings input size protection
+# If set, embedding inputs are truncated to at most this many tokens before being sent.
+# This avoids provider-side "input too long" errors.
+# Note: token counting uses tiktoken.
+# Example:
+# embeddings_max_input_tokens: 7500
+embeddings_max_input_tokens: null
+
+# Optional: force a specific tiktoken encoding when applying the limit.
+# If null, the app will try to infer an encoding from embeddings_model and fall back to cl100k_base.
+# Example values: cl100k_base, o200k_base
+embeddings_token_encoding: null
+
 # SSL / TLS
 # Optional: path to a PEM file containing root CA certificates for outbound HTTPS.
 # Useful behind corporate proxies / custom PKI.

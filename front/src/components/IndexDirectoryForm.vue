@@ -3,7 +3,11 @@ import { ref } from 'vue'
 
 import { getIndexStatus, indexDirectory } from '../api/openDeepWiki'
 
-const emit = defineEmits<{ indexed: [] }>()
+const emit = defineEmits<{
+  indexed: []
+  indexingStarted: [payload: { project: string; path: string; status: 'in_progress' | 'done' }]
+  indexingStatus: [payload: { project: string; status: 'in_progress' | 'done'; error?: string | null }]
+}>()
 
 const project = ref('')
 const path = ref('')
@@ -26,6 +30,7 @@ async function pollIndexStatus(project: string): Promise<void> {
     if (s.error) {
       error.value = s.error
     }
+    emit('indexingStatus', { project, status: s.status, error: s.error })
     if (s.status === 'done') return
     await sleep(1000)
   }
@@ -48,6 +53,8 @@ async function onSubmit(): Promise<void> {
     const started = await indexDirectory({ project: p, path: dir, reindex: false })
     status.value = started.status ?? 'in_progress'
     success.value = `Indexing status: ${status.value}`
+
+    emit('indexingStarted', { project: p, path: dir, status: status.value || 'in_progress' })
 
     if (status.value === 'in_progress') {
       await pollIndexStatus(p)
