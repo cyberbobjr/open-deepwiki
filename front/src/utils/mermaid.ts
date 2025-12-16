@@ -19,6 +19,12 @@ async function ensureMermaidInitialized(): Promise<any> {
       startOnLoad: false,
       // Treat diagram text as untrusted input.
       securityLevel: 'strict',
+      // Avoid <foreignObject> HTML labels which often get stripped by sanitizers.
+      // This keeps labels as plain SVG <text> so they render reliably.
+      htmlLabels: false,
+      flowchart: {
+        htmlLabels: false,
+      },
     })
     mermaidInitialized = true
   }
@@ -77,6 +83,8 @@ export async function renderMermaidInRoot(root: HTMLElement | null): Promise<voi
         USE_PROFILES: { svg: true, svgFilters: true },
         // Keep return type as string so it can be assigned to innerHTML.
         RETURN_TRUSTED_TYPE: false,
+        // Ensure common SVG text tags survive sanitization.
+        ADD_TAGS: ['text', 'tspan'],
       } as any)
 
       node.innerHTML = String(sanitized)

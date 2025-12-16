@@ -73,6 +73,15 @@ button:disabled {
   @apply border border-slate-200 bg-slate-50;
 }
 
+.chat-markdown :where(.mermaid svg) {
+  height: auto;
+  max-width: 100%;
+}
+
+.chat-markdown :where(.mermaid svg text) {
+  fill: currentColor;
+}
+
 .chat-markdown :where(code) {
   @apply rounded bg-slate-100 px-1 py-0.5 font-mono;
   font-size: 0.875em;
