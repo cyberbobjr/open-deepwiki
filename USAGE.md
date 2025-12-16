@@ -1,23 +1,22 @@
-# Java Graph RAG - Usage Examples
+# open-deepwiki — Usage
 
 ## Overview
 
-This document provides examples of how to use the Java Graph RAG system.
+This document provides examples of how to run the open-deepwiki backend + web UI, index Java projects, and call the HTTP API.
 
 ## Prerequisites
 
 Install dependencies:
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
 ```
 
 Tip (to avoid conda/global issues):
 - If you don’t activate the venv, prefix commands with `./venv/bin/python`.
 
-Set up environment variables (optional):
+Set up environment variables (required for indexing/query/ask):
 
 ```bash
 export OPENAI_API_KEY="your-api-key"
@@ -64,7 +63,8 @@ debug_level: INFO
 java_codebase_dir: ./fixtures
 
 # Optional: project scope name
-# When set, indexed docs include metadata.project=<project_name> and the API uses it as default scope.
+# When set, indexed docs include metadata.project=<project_name>.
+# Note: the HTTP API still requires an explicit `project` field in requests.
 project_name: my-project
 
 # Optional: index one heuristic summary document per Java file (helps file-level RAG)
@@ -116,9 +116,9 @@ tiktoken_prefetch_encodings:
 Indexes all `.java` files under the configured directory (`java_codebase_dir`) and persists to Chroma (default `./chroma_db`).
 
 ```bash
-python indexer.py
-# without activating the venv:
 ./venv/bin/python indexer.py
+# (optional) point to a specific config file:
+./venv/bin/python indexer.py --config open-deepwiki.yaml
 ```
 
 Useful variables:
@@ -129,22 +129,36 @@ Useful variables:
 ### 2) Run the API
 
 ```bash
-uvicorn app:app --reload --port 8000
-# without activating the venv:
+# Recommended (uses api_port from open-deepwiki.yaml):
+./venv/bin/python app.py
+
+# Dev reload mode:
 ./venv/bin/python -m uvicorn app:app --reload --port 8000
 ```
 
 Endpoints :
 - `GET /api/v1/health`
-- `POST /api/v1/query` with `{ "query": "...", "k": 4, "project": "..." }` (`project` required)
-- `POST /api/v1/ask` with `{ "question": "...", "k": 4, "project": "...", "session_id": "..." }` (chat + history)
-- `POST /api/v1/index-directory` with `{ "path": "...", "project": "...", "reindex": true }` (recursive `.java` indexing)
 - `GET /api/v1/projects` (list indexed project scopes)
+- `GET /api/v1/projects/details` (projects + last known indexed path/timestamp)
+- `DELETE /api/v1/projects` with body `{ "project": "..." }` (delete project scope)
 
-Project-in-path endpoints (same scoping, but project comes from URL path):
-- `POST /api/v1/projects/{project}/query` with `{ "query": "...", "k": 4 }`
-- `POST /api/v1/projects/{project}/ask` with `{ "question": "...", "k": 4, "session_id": "..." }`
-- `POST /api/v1/projects/{project}/index-directory` with `{ "path": "...", "reindex": true }`
+- `POST /api/v1/index-directory` with `{ "path": "...", "project": "...", "reindex": true, "include_file_summaries": true }`
+    (starts indexing asynchronously; returns `status: in_progress`)
+- `GET /api/v1/index-status?project=...` (poll indexing status)
+
+- `POST /api/v1/query` with `{ "query": "...", "k": 4, "project": "..." }`
+- `POST /api/v1/ask` with `{ "question": "...", "k": 4, "project": "...", "session_id": "..." }`
+- `POST /api/v1/ask/stream` (SSE)
+
+- `POST /api/v1/sessions` with `{ "project": "..." }` (list chat sessions)
+- `POST /api/v1/sessions/delete` with `{ "project": "...", "session_id": "..." }`
+
+- `POST /api/v1/project-overview` with `{ "project": "..." }`
+- `POST /api/v1/project-docs-index` with `{ "project": "..." }`
+- `GET /api/v1/projects/{project}/docs/{doc_path}` (serve generated markdown)
+
+- `POST /api/v1/generate-javadoc` and related job endpoints
+- `GET /api/v1/postimplementation-logs` (read JavaDoc generation logs)
 
 Implementation: routes are in `router/api.py` (mounted by `app.py`).
 
@@ -178,24 +192,41 @@ curl -X POST http://127.0.0.1:8000/api/v1/index-directory \
     -d '{"path":"./fixtures","project":"my-project","reindex":true,"include_file_summaries":true}'
 ```
 
-Example response:
+Example response (indexing is asynchronous):
 
 ```json
 {
     "path": "/abs/path/to/fixtures",
-    "indexed_methods": 12,
-    "loaded_method_docs": 12
+    "project": "my-project",
+    "indexed_methods": 0,
+    "indexed_file_summaries": 0,
+    "loaded_method_docs": 0,
+    "indexed_at": "2025-01-01T00:00:00Z",
+    "status": "in_progress"
 }
+```
+
+Then poll until completion:
+
+```bash
+curl 'http://127.0.0.1:8000/api/v1/index-status?project=my-project'
 ```
 
 Notes :
 - `path` can be absolute or relative (resolved from the server working directory).
 - Requires `OPENAI_API_KEY` (embeddings). If missing: HTTP 503.
 
-## Legacy demo script mode
+## Web UI (recommended)
 
-The all-in-one `java_graph_rag.py` script has been removed in favor of dedicated modules.
-Use the application entrypoints instead (`indexer.py` + `app.py`).
+Run the backend (`./venv/bin/python app.py`), then:
+
+```bash
+cd front
+npm install
+npm run dev
+```
+
+Open the printed Vite URL (typically `http://localhost:5173`). While a project is indexing, the projects list shows the card in a disabled state with a spinner.
 
 ## Code Components
 
@@ -448,10 +479,13 @@ The script will automatically clone tree-sitter-java on first run.
 ### OpenAI API errors
 
 If you're using a custom endpoint, ensure:
-1. The `OPENAI_API_BASE` environment variable is set correctly
-2. The endpoint is accessible
-3. The API key is valid
+1. You set explicit base URLs (no implicit fallback):
+    - `OPENAI_EMBEDDING_API_BASE`
+    - `OPENAI_CHAT_API_BASE`
+2. You set explicit models:
+    - `OPENAI_EMBEDDING_MODEL`
+    - `OPENAI_CHAT_MODEL`
+3. The endpoint is accessible from the machine running the backend (and uses a trusted TLS chain, or you configured `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE`).
+4. `OPENAI_API_KEY` is set.
 
-### Mock mode
-
-If dependencies are not fully installed, the script falls back to mock mode, which still demonstrates the concepts without actual parsing or vector search.
+Note: open-deepwiki does not have a “mock mode” fallback for indexing/querying; if required dependencies or config are missing, it fails fast with an error.

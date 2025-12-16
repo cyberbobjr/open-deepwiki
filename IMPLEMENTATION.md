@@ -1,172 +1,82 @@
 # Implementation Summary
 
-## Java Graph RAG (script + application)
+This document summarizes the current open-deepwiki implementation (backend + UI) and the main data flows.
 
-This document summarizes the implementation of the Java Graph RAG system.
+## Entrypoints
 
-This repository contains:
-- an application (indexer + API) with root-level entrypoints: `indexer.py` and `app.py`
-- separate “core” modules (parser/indexing/retriever/etc.) used by the application
+- `app.py`: FastAPI application factory + `./venv/bin/python app.py` runner
+- `indexer.py`: CLI indexer for batch indexing (and optional docs generation)
+- `config.py`: YAML config loader + strict environment mapping
 
-### Requirements Met
+## High-level architecture
 
-✅ **1. Tree-sitter Java Parsing (tree-sitter==0.21.3)**
-- Uses `.captures()` API for extracting AST nodes
-- Extracts method/constructor ID, signature, type, calls, code
-- Implements Javadoc extraction via sibling node lookup
-- Files: `core/parsing/tree_sitter_setup.py`, `core/parsing/java_parser.py`
+1. **Index** a Java directory into a named **project** scope
+2. **Persist** embeddings + metadata into Chroma (`CHROMA_PERSIST_DIR`, default `./chroma_db`)
+3. **Retrieve** using similarity search + dependency enrichment (`calls`)
+4. **Answer** via an agent with optional persisted conversation state (SQLite checkpointer)
 
-✅ **2. LangChain GraphEnrichedRetriever**
-- Custom retriever extending `BaseRetriever`
-- Performs vector similarity search
-- Fetches dependency documentation via "calls" metadata IDs
-- Enriches context with related method implementations
-- File: `core/rag/retriever.py`
+## Runtime state and persistence
 
-✅ **3. Chroma & OpenAIEmbeddings**
-- Uses Chroma as vector store
-- Configures OpenAIEmbeddings with custom internal URL support
-- Supports `base_url` parameter for custom endpoints
-- Files: `core/rag/embeddings.py`, `utils/vectorstore.py`
+- **Chroma**: persistent vectorstore (`CHROMA_PERSIST_DIR`, `CHROMA_COLLECTION`)
+- **Project graph**: SQLite store for call graph + overview (`project_graph_sqlite_path`)
+- **Chat sessions**: SQLite checkpointer (`checkpointer_sqlite_path`)
+- **Generated docs**: written under `docs_output_dir/<project>/docs/` (default `OUTPUT/<project>/docs/`)
+- **Postimplementation logs**: served via `/api/v1/postimplementation-logs` (directory controlled by env)
 
-✅ **4. Validation & tests**
-- Unit tests via `test_java_graph_rag.py` (fixtures)
-- `validate.py` script adapted to the modular structure
+## Backend API layout
 
-### File Structure
+The API router is mounted under the `/api/v1` prefix in `app.py`.
 
-```
-open-deepwiki/
-├── app.py                 # Entrypoint API (FastAPI)
-├── indexer.py             # Indexing entrypoint (CLI)
-├── config.py              # Config YAML + logging
-├── core/                  # Core library (Python package)
-│   ├── parsing/            # Java parser (tree-sitter)
-│   └── rag/                # Embeddings + indexing + retriever
-├── router/                # Routes FastAPI (endpoints HTTP)
-├── utils/                 # Helpers (vectorstore, chat)
-├── fixtures/              # Java fixtures for tests
-├── tests/                 # Unit tests (unittest)
-├── requirements.txt        # Dependencies
-├── README.md
-├── USAGE.md
-├── validate.py
-└── open-deepwiki.yaml.sample
-```
+- Router aggregation: `router/api.py`
+- Endpoints live in `router/routes_*.py` modules
 
-### Key Components
+Key endpoints:
 
-#### 1. JavaParser Class
-- Initializes tree-sitter with Java language
-- `parse_java_file()`: Main parsing method
-- `_extract_signature()`: Extracts method signature
-- `_extract_calls()`: Finds method invocations using `.captures()`
-- `_extract_javadoc()`: Retrieves Javadoc from sibling nodes
-- `_generate_id()`: Creates unique method identifier
+- `/health`: configuration + startup diagnostics
+- `/index-directory` + `/index-status`: async indexing job control and polling
+- `/projects`, `/projects/details`, `DELETE /projects`: project discovery + lifecycle
+- `/query`: similarity search (GraphEnrichedRetriever)
+- `/ask` and `/ask/stream`: chat endpoints (SSE streaming supported)
+- `/sessions` and `/sessions/delete`: session listing + deletion (SQLite-backed)
+- `/project-overview`, `/project-docs-index`, `/projects/{project}/docs/{doc_path}`: generated docs serving
 
-#### 2. GraphEnrichedRetriever Class
-- Extends LangChain's `BaseRetriever`
-- `_get_relevant_documents()`: Two-step retrieval:
-  1. Vector search for primary matches
-  2. Dependency enrichment via "calls" metadata
-- Returns both primary results and their dependencies
+## Indexing pipeline (HTTP)
 
-#### 3. Helper Functions
-- `setup_java_language()`: Downloads and builds tree-sitter-java
-- `create_embeddings()`: Configures OpenAI embeddings with custom URL
-- `index_java_methods()`: Indexes parsed methods into Chroma
+`POST /api/v1/index-directory` starts indexing in a background thread and returns immediately with `status="in_progress"`.
 
-Notes:
-- The application loads the vector store via `utils/vectorstore.py` and exposes endpoints via `router/api.py`.
+Implementation notes:
 
-#### 4. Mock Data
-- Complete Java class (`UserService`) with:
-  - Package and imports
-  - Multiple methods with Javadoc
-  - Method calls between methods
-  - Constructor
-  - Private and public methods
-  - Realistic business logic
+- A process-local `_INDEXING_LOCK` in `router/routes_indexing.py` serializes indexing work to avoid concurrent writes to shared resources.
+- Indexing builds the Java tree-sitter grammar if needed (`core/parsing/tree_sitter_setup.py`).
+- Parsed methods are indexed via `core/rag/indexing.py`.
+- If enabled, file summary documents are indexed to help file-level retrieval.
+- A SQLite-backed project graph is rebuilt per project (`core/project_graph/sqlite_store.py`).
+- Best-effort docs generation runs during indexing (project overview + feature docs under `OUTPUT/<project>/docs/`).
 
-### Technical Highlights
+## Retrieval + chat
 
-1. **Tree-sitter Usage**
-   - Correctly uses `.captures()` API (not deprecated `.matches()`)
-   - Implements sibling node lookup for Javadoc
-   - Handles both methods and constructors
+- `core/rag/retriever.py` implements `GraphEnrichedRetriever`:
+   - similarity search (primary hits)
+   - enrich results by following `calls`
+- `router/routes_ask.py` wraps retrieval into:
+   - a non-streaming `POST /ask` response
+   - a streaming `POST /ask/stream` SSE endpoint
 
-2. **Graph-Based Enrichment**
-   - Follows "calls" metadata to fetch dependencies
-   - Avoids duplicate results with seen_ids set
-   - Marks dependencies with metadata
+Conversation state can be persisted via the SQLite checkpointer.
 
-3. **Security & Best Practices**
-   - No hardcoded credentials
-   - Explicit `shell=False` in subprocess calls
-   - Timeout protection for git operations
-   - Uses object identity (`is`) for node comparison
-   - Updated to non-deprecated OpenAI API parameters
+## Strict LLM configuration
 
-4. **Validation**
-   - Syntax validation passes
-   - The repo includes scripts/tests to validate parsing + indexing + retrieval
+The project intentionally avoids silent fallbacks:
 
-### Testing
+- Embeddings require an explicit base URL + model (`OPENAI_EMBEDDING_API_BASE`, `OPENAI_EMBEDDING_MODEL`).
+- Chat requires an explicit base URL + model (`OPENAI_CHAT_API_BASE`, `OPENAI_CHAT_MODEL`).
 
-The implementation includes:
-- `validate.py`: Validates all requirements are met
-- `test_java_graph_rag.py`: Unit tests for components
-- Comprehensive demo in `__main__` with 3 test queries
+These can come from environment variables or from YAML config (mapped into env by `config.apply_config_to_env`).
 
-### Usage
+## Front-end
 
-“Application” mode (indexer + API):
+The UI lives under `front/` (Vite + Vue + Pinia) and talks to the backend via `/api/v1/*`.
 
-```bash
-pip install -r requirements.txt
-python indexer.py
-# Option A (port configuré via open-deepwiki.yaml -> api_port)
-./venv/bin/python app.py
+Notable UI behavior:
 
-# Option B (mode dev reload)
-uvicorn app:app --reload --port 8000
-```
-
-“Demo script” mode (historical): removed (modular refactor).
-
-With custom OpenAI endpoint:
-```bash
-export OPENAI_API_BASE="https://internal.api.com/v1"
-export OPENAI_API_KEY="your-key"
-python indexer.py
-```
-
-### Dependencies
-
-Main dependencies (see `requirements.txt` for the source of truth):
-- tree-sitter==0.21.3
-- langchain (+ split packages : langchain-core, langchain-openai, langchain-chroma, ...)
-- chromadb
-- openai (SDK)
-- tiktoken
-
-### Code Quality
-
-- **Documentation**: docstrings + docs (README/USAGE)
-- **Type Hints**: Full type annotations
-- **Error Handling**: Graceful fallbacks
-- **Compat**: no more `api/` shim; the supported entrypoints are at the repo root (`app.py`, `indexer.py`).
-
-### Deliverables
-
-Main deliverables:
-1. ✅ Python script for Java Graph RAG
-2. ✅ Tree-sitter parsing with `.captures()`
-3. ✅ GraphEnrichedRetriever implementation
-4. ✅ Chroma + OpenAIEmbeddings with custom URL
-5. ✅ Mock Java data
-6. ✅ Indexing logic
-7. ✅ Test queries in `__main__`
-8. ✅ FastAPI API + indexer CLI (root-level entrypoints)
-9. ✅ Documentation (README.md, USAGE.md)
-10. ✅ Validation tools
+- When a project indexing job starts, the projects grid shows a disabled card with a spinner until `/index-status` reports `done`.

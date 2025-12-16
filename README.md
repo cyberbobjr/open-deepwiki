@@ -1,173 +1,77 @@
 # open-deepwiki
 
-## Java Graph RAG
+open-deepwiki is a Java codebase indexing + RAG API with a small web UI.
 
-A Retrieval-Augmented Generation (RAG) system for Java codebases that uses graph-based dependency enrichment.
+It parses Java using tree-sitter, indexes methods (and optional file summaries) into a persistent Chroma collection, and serves retrieval + chat endpoints via FastAPI.
 
-### Features
+## What you get
 
-1. **Tree-sitter Parsing**: Parses Java code using `tree-sitter==0.21.3` to extract:
-   - Method/Constructor ID
-   - Signature
-   - Type (method or constructor)
- - `GET /api/v1/health`
- - `POST /api/v1/query`
- - `POST /api/v1/ask`
- - `POST /api/v1/index-directory`
- - `GET /api/v1/projects`
- - `GET /api/v1/scopes`
- - `POST /api/v1/scopes/{scope}/query`
- - `POST /api/v1/scopes/{scope}/ask`
- - `POST /api/v1/scopes/{scope}/index-directory`
-   - Performs vector similarity search
-   - Fetches dependency documentation via "calls" metadata
-   - Enriches context with related method implementations
+- **Indexing**: scan a directory of `.java` files into a named **project** scope
+- **Retrieval**: `POST /api/v1/query` returns similarity matches enriched with called dependencies
+- **Chat**: `POST /api/v1/ask` and `POST /api/v1/ask/stream` (SSE)
+- **Docs**: indexing can generate per-project docs under `OUTPUT/<project>/docs/` and serve them via the API
+- **Web UI**: a Vite + Vue front-end to index projects and chat
 
-3. **Vector Storage**: Uses Chroma with OpenAI embeddings
-   - Supports custom internal OpenAI API URLs
-   - Persistent storage for indexed methods
+## Requirements
 
-4. **Demo**: Includes mock Java data, indexing logic, and test queries
+- Python **3.10+**
+- Node.js 18+ (only for the web UI)
+- Build toolchain for tree-sitter grammar build (git + a C/C++ compiler toolchain)
 
-### Installation
+## Setup
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
+python3 -m venv venv
+./venv/bin/pip install -r requirements.txt
 ```
 
-### Usage
+## Configuration (no silent fallbacks)
 
-#### Mode “application” (indexer + API)
+At minimum you must provide:
 
-1) Configure your environment (at minimum `OPENAI_API_KEY`). Optionally, create an `open-deepwiki.yaml` file at the repo root (e.g., scan `./fixtures`).
+- `OPENAI_API_KEY`
+- `OPENAI_EMBEDDING_MODEL`
+- `OPENAI_CHAT_MODEL`
 
-2) Index a Java codebase (writes/appends to the persisted Chroma collection on disk):
+If you use OpenAI-compatible gateways, configure explicit base URLs:
+
+- `OPENAI_EMBEDDING_API_BASE`
+- `OPENAI_CHAT_API_BASE`
+
+You can also configure these via YAML (see `open-deepwiki.yaml.sample`) and point the app to it with `OPEN_DEEPWIKI_CONFIG`.
+
+## Run the backend
 
 ```bash
-python indexer.py
-# if you don't want to activate the venv:
-./venv/bin/python indexer.py
-```
-
-3) Start the HTTP API:
-
-```bash
-# Option A (recommended if you want the port from `open-deepwiki.yaml`):
 ./venv/bin/python app.py
-
-# Option B (dev reload mode):
-uvicorn app:app --reload --port 8000
-# if you don't want to activate the venv:
-./venv/bin/python -m uvicorn app:app --reload --port 8000
 ```
 
-4) Check health:
+Health:
 
 ```bash
-curl http://127.0.0.1:8000/v1/health
+curl http://127.0.0.1:8000/api/v1/health
 ```
 
-API routes:
-
-- `GET /api/v1/health`
-- `POST /api/v1/query`
-- `POST /api/v1/ask`
-- `POST /api/v1/index-directory`
-- `GET /api/v1/projects`
-- `POST /api/v1/projects/{project}/query`
-- `POST /api/v1/projects/{project}/ask`
-- `POST /api/v1/projects/{project}/index-directory`
-
-5) Query:
+## Run the web UI
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/query \
-   -H 'Content-Type: application/json' \
-   -d '{"query":"create user","k":4,"project":"my-project"}'
+cd front
+npm install
+npm run dev
 ```
 
-6) Ask:
+The Vite dev server proxies `/api/*` to `http://127.0.0.1:8000`.
+
+## Index a project
+
+Use the UI to start indexing (project name + directory). While indexing runs, the project card shows as disabled with a spinner.
+
+You can also use the CLI indexer:
 
 ```bash
-curl -X POST http://127.0.0.1:8000/api/v1/ask \
-   -H 'Content-Type: application/json' \
-   -d '{"question":"How do I create a new user?","k":4,"project":"my-project"}'
-
-# The `session_id` field is returned in the response; reuse it to keep history.
-curl -X POST http://127.0.0.1:8000/api/v1/ask \
-   -H 'Content-Type: application/json' \
-   -d '{"question":"Where is validation done?","k":4,"project":"my-project","session_id":"<paste-session-id>"}'
+./venv/bin/python indexer.py --config open-deepwiki.yaml
 ```
 
-Same call using a project in the URL (no `project` field in JSON):
+## API and examples
 
-```bash
-curl -X POST http://127.0.0.1:8000/v1/projects/my-project/ask \
-   -H 'Content-Type: application/json' \
-   -d '{"question":"Where is validation done?","k":4,"session_id":"<paste-session-id>"}'
-```
-
-7) Index a directory (recursive scan of `.java`):
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/index-directory \
-   -H 'Content-Type: application/json' \
-   -d '{"path":"./fixtures","project":"my-project","reindex":true,"include_file_summaries":true}'
-```
-
-#### Notes
-
-- The legacy `java_graph_rag.py` script has been removed and refactored into modules under `core/`.
-- The main entrypoints remain at the repo root: `app.py`, `indexer.py`, `config.py`.
-- HTTP routes are defined in `router/api.py` and included by `app.py`.
-- Chroma/LangChain helpers used by the API live in `utils/vectorstore.py`.
-
-### How It Works
-
-1. **Parsing**: The script uses tree-sitter to parse Java code and extract method information using the `.captures` API.
-
-2. **Indexing**: Each method is indexed into a Chroma vector store with metadata including:
-   - Method ID and signature
-   - Type (method/constructor)
-   - List of called methods
-   - Javadoc availability
-
-3. **Retrieval**: When querying:
-   - Vector search finds relevant methods
-   - The retriever follows "calls" metadata to fetch dependency documentation
-   - Results include both primary matches and their dependencies
-
-4. **Context Enrichment**: The GraphEnrichedRetriever automatically includes documentation for methods that are called by the retrieved methods, providing richer context for understanding the code.
-
-### Example
-
-The included mock data demonstrates a `UserService` class with methods for user management. Test queries show how the retriever can:
-
-- Find the main method for creating users
-- Identify validation methods called during user creation
-- Retrieve database connection validation logic
-
-### Architecture
-
-```
-JavaParser (tree-sitter)
-    ↓
-JavaMethod objects (ID, signature, type, calls, code, javadoc)
-    ↓
-Index to Chroma (with OpenAIEmbeddings)
-    ↓
-GraphEnrichedRetriever
-    ↓
-Enriched Results (primary + dependencies)
-```
-
-### Requirements
-
-- Python 3.8+
-- tree-sitter==0.21.3
-- langchain
-- chromadb
-- openai
-- Git (for cloning tree-sitter-java)
+See [USAGE.md](USAGE.md) for endpoint list and curl examples.
