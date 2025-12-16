@@ -135,7 +135,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto w-full max-w-6xl px-6 py-10">
+  <div class="w-full px-6 py-10">
     <ConfirmModal
       :open="modalOpen"
       :mode="modalMode"

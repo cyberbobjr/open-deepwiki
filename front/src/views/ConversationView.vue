@@ -502,7 +502,7 @@ onMounted(() => scheduleMermaidRender())
       @confirm="confirmDeleteSession"
     />
 
-    <div class="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden px-6 py-6">
+    <div class="flex h-full w-full flex-col overflow-hidden px-6 py-6">
       <div class="flex shrink-0 items-center justify-between gap-4">
         <div class="flex items-center gap-3">
           <RouterLink class="text-sm text-slate-600 hover:underline" :to="overviewTo">
@@ -548,7 +548,7 @@ onMounted(() => scheduleMermaidRender())
             <div v-else class="flex flex-col gap-4">
               <div v-for="(m, idx) in messages" :key="idx" class="flex">
                 <div
-                  class="max-w-3xl rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
                   :class="m.role === 'user' ? 'ml-auto bg-slate-50 text-slate-900' : 'mr-auto bg-white text-slate-900'"
                 >
                   <div

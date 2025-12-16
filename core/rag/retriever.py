@@ -22,9 +22,16 @@ class GraphEnrichedRetriever(BaseRetriever):
     def _get_relevant_documents(
         self, query: str, *, run_manager: CallbackManagerForRetrieverRun
     ) -> List[Document]:
-        search_filter: Optional[Dict[str, Any]] = None
+        search_filter: Optional[Dict[str, Any]] = {"doc_type": "java_method"}
         if self.project is not None:
-            search_filter = {"project": self.project}
+            # Chroma's `where` expects either a single field predicate or a single
+            # boolean operator (e.g. {"$and": [...]}) when combining predicates.
+            search_filter = {
+                "$and": [
+                    {"doc_type": "java_method"},
+                    {"project": self.project},
+                ]
+            }
 
         try:
             initial_docs = self.vectorstore.similarity_search(query, k=self.k, filter=search_filter)

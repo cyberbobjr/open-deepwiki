@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from langchain_chroma import Chroma
@@ -185,3 +186,67 @@ def index_project_overview(
 
     _safe_add_documents(vectorstore, [doc], ids=[scoped_id])
     return doc
+
+
+def index_generated_markdown_docs(
+    *,
+    project: Optional[str],
+    docs_root: Path,
+    vectorstore: Chroma,
+) -> List[Document]:
+    """Index generated markdown documentation into the vector store.
+
+    This is intended for files produced by:
+    - `core/documentation/feature_extractor.py`
+    - `core/documentation/site_generator.py`
+
+    Args:
+        project: Optional project scope name. If provided, it is stored in metadata
+            and used to build stable scoped ids.
+        docs_root: Directory containing generated markdown files (recursively).
+        vectorstore: Chroma vector store.
+
+    Returns:
+        The list of indexed `Document` instances (empty if nothing was indexed).
+    """
+
+    root = Path(docs_root).expanduser()
+    if not root.exists() or not root.is_dir():
+        return []
+
+    documents: List[Document] = []
+    ids: List[str] = []
+
+    for path in sorted(root.rglob("*.md")):
+        if not path.is_file():
+            continue
+
+        try:
+            text = path.read_text(encoding="utf-8")
+        except Exception:
+            # Best-effort; skip unreadable generated docs.
+            continue
+
+        try:
+            rel = path.relative_to(root).as_posix()
+        except Exception:
+            rel = path.name
+
+        scoped_id = f"{project}::docs::{rel}" if project else f"docs::{rel}"
+
+        doc = Document(
+            page_content=str(text or "").strip(),
+            metadata={
+                "scoped_id": scoped_id,
+                "project": project,
+                "doc_type": "generated_markdown",
+                "doc_relpath": rel,
+                "doc_path": str(path),
+            },
+        )
+
+        documents.append(doc)
+        ids.append(scoped_id)
+
+    _safe_add_documents(vectorstore, documents, ids=ids)
+    return documents

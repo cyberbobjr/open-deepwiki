@@ -663,7 +663,7 @@ onMounted(load)
 
 <template>
   <div class="h-screen w-full overflow-hidden">
-    <div class="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden px-6 py-6">
+    <div class="flex h-full w-full flex-col overflow-hidden px-6 py-6">
       <div class="flex shrink-0 items-center justify-between gap-4">
         <div class="flex items-center gap-3">
           <RouterLink class="text-sm text-slate-600 hover:underline" to="/">← Projects</RouterLink>

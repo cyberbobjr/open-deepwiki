@@ -9,6 +9,7 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.callbacks.base import BaseCallbackHandler
+from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
 
 from core.rag.retriever import GraphEnrichedRetriever
@@ -174,19 +175,8 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
 
         docs = retriever.get_relevant_documents(req.question)
 
-        project_overviews = getattr(request.app.state, "project_overviews", None) or {}
-        project_overview_entry = project_overviews.get(normalized_project)
-        project_overview: Any = None
-        if isinstance(project_overview_entry, str):
-            project_overview = project_overview_entry
-        elif isinstance(project_overview_entry, dict):
-            project_overview = project_overview_entry.get("overview")
-
         context_results: List[QueryResult] = []
         context_blocks: List[str] = []
-
-        if isinstance(project_overview, str) and project_overview.strip():
-            context_blocks.append(f"### project_overview\n{project_overview.strip()}")
 
         for doc in docs:
             meta = doc.metadata or {}
@@ -217,6 +207,38 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
                 header.append(f"called_from={meta.get('called_from')}")
             header_text = " | ".join(header) if header else "context"
             context_blocks.append(f"### {header_text}\n{doc.page_content}")
+
+        # Second pass: retrieve generated markdown documentation (feature pages, overview).
+        vectorstore = getattr(request.app.state, "vectorstore", None)
+        docs_markdown: List[Document] = []
+        if vectorstore is not None:
+            where = {
+                "$and": [
+                    {"project": normalized_project},
+                    {"doc_type": "generated_markdown"},
+                ]
+            }
+            try:
+                docs_markdown = vectorstore.similarity_search(req.question, k=req.k, filter=where)
+            except TypeError:
+                # Older wrappers may not accept `filter`; do a best-effort manual filter.
+                try:
+                    unfiltered = vectorstore.similarity_search(req.question, k=max(int(req.k) * 4, 8))
+                except Exception:
+                    unfiltered = []
+                docs_markdown = [
+                    d
+                    for d in (unfiltered or [])
+                    if (d.metadata or {}).get("project") == normalized_project
+                    and (d.metadata or {}).get("doc_type") == "generated_markdown"
+                ][: int(req.k)]
+            except Exception:
+                docs_markdown = []
+
+        for md in docs_markdown:
+            meta = md.metadata or {}
+            label = meta.get("doc_relpath") or meta.get("doc_path") or "generated_markdown"
+            context_blocks.append(f"### docs_markdown | {label}\n{md.page_content}")
 
         from utils.agent_factory import create_codebase_agent
         from utils.sqlite_checkpointer import SqliteCheckpointSaver
@@ -577,19 +599,8 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
     retriever.k = req.k
     docs = retriever.get_relevant_documents(req.question)
 
-    project_overviews = getattr(request.app.state, "project_overviews", None) or {}
-    project_overview_entry = project_overviews.get(project)
-    project_overview: Any = None
-    if isinstance(project_overview_entry, str):
-        project_overview = project_overview_entry
-    elif isinstance(project_overview_entry, dict):
-        project_overview = project_overview_entry.get("overview")
-
     context_results: List[QueryResult] = []
     context_blocks: List[str] = []
-
-    if isinstance(project_overview, str) and project_overview.strip():
-        context_blocks.append(f"### project_overview\n{project_overview.strip()}")
 
     for doc in docs:
         meta = doc.metadata or {}
@@ -621,6 +632,37 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
 
         header_text = " | ".join(header) if header else "context"
         context_blocks.append(f"### {header_text}\n{doc.page_content}")
+
+    # Second pass: retrieve generated markdown documentation (feature pages, overview).
+    vectorstore = getattr(request.app.state, "vectorstore", None)
+    docs_markdown: List[Document] = []
+    if vectorstore is not None:
+        where = {
+            "$and": [
+                {"project": project},
+                {"doc_type": "generated_markdown"},
+            ]
+        }
+        try:
+            docs_markdown = vectorstore.similarity_search(req.question, k=req.k, filter=where)
+        except TypeError:
+            try:
+                unfiltered = vectorstore.similarity_search(req.question, k=max(int(req.k) * 4, 8))
+            except Exception:
+                unfiltered = []
+            docs_markdown = [
+                d
+                for d in (unfiltered or [])
+                if (d.metadata or {}).get("project") == project
+                and (d.metadata or {}).get("doc_type") == "generated_markdown"
+            ][: int(req.k)]
+        except Exception:
+            docs_markdown = []
+
+    for md in docs_markdown:
+        meta = md.metadata or {}
+        label = meta.get("doc_relpath") or meta.get("doc_path") or "generated_markdown"
+        context_blocks.append(f"### docs_markdown | {label}\n{md.page_content}")
 
     from utils.agent_factory import create_codebase_agent
     from utils.sqlite_checkpointer import SqliteCheckpointSaver

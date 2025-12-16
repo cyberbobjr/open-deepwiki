@@ -130,6 +130,7 @@ def _run_index_directory_job(
             from core.rag.indexing import (
                 index_java_file_summaries,
                 index_java_methods,
+                index_generated_markdown_docs,
                 index_project_overview,
             )
             from core.parsing.tree_sitter_setup import setup_java_language
@@ -284,6 +285,13 @@ def _run_index_directory_job(
                     file_summaries=file_summaries_by_path,
                     llm=llm,
                     batch_size=batch_size,
+                )
+
+                # Index generated markdown docs (overview + feature pages) into Chroma.
+                index_generated_markdown_docs(
+                    project=project,
+                    docs_root=docs_site_root,
+                    vectorstore=vectorstore,
                 )
             except Exception as e:
                 logger.warning(
