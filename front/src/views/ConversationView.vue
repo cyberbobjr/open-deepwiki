@@ -304,6 +304,8 @@ watch(
   },
 )
 
+const messages = computed(() => thread.value.messages ?? [])
+
 watch(
   () => messages.value,
   () => scheduleMermaidRender(),
@@ -322,8 +324,6 @@ const selectedContext = computed<QueryResult | undefined>(() => {
 })
 
 const contexts = computed<QueryResult[]>(() => thread.value.context ?? [])
-
-const messages = computed(() => thread.value.messages ?? [])
 
 function fileNameFromPath(pathValue: string): string {
   const p = String(pathValue || '').trim()
