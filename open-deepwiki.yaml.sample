@@ -44,6 +44,11 @@ docs_feature_batch_size: 10
 # Helps RAG answer file-level questions without reading every method.
 index_file_summaries: false
 
+# Optional: exclude test-related Java sources during indexing.
+# If true (default), files located under a directory named "test" (case-insensitive)
+# like src/test/java/** are ignored.
+index_exclude_tests: true
+
 # /ask persistence is handled by the LangGraph checkpointer (see bottom of file).
 # LLM (embeddings + chat)
 # Ces champs alimentent automatiquement des variables d'env compatibles OpenAI/LangChain :

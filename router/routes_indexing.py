@@ -120,7 +120,12 @@ def _run_index_directory_job(
 
             setup_java_language()
             parser = JavaParser()
-            methods = scan_java_methods(str(directory), parser)
+            config = getattr(request.app.state, "config", None)
+            methods = scan_java_methods(
+                str(directory),
+                parser,
+                exclude_tests=bool(getattr(config, "index_exclude_tests", True)),
+            )
             if project:
                 for m in methods:
                     m.project = project
@@ -187,7 +192,12 @@ def _run_index_directory_job(
                     streaming=False,
                 )
 
-                java_files = list(iter_java_files(str(directory)))
+                java_files = list(
+                    iter_java_files(
+                        str(directory),
+                        exclude_tests=bool(getattr(config, "index_exclude_tests", True)),
+                    )
+                )
                 by_folder: Dict[Path, List[Path]] = {}
                 for fp in java_files:
                     by_folder.setdefault(fp.parent, []).append(fp)

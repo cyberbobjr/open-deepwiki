@@ -59,27 +59,89 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def iter_java_files(root_dir: str) -> Iterable[Path]:
+def _is_test_java_path(path: Path, *, root: Path) -> bool:
+    """Return True when a Java file is located under a directory named "test".
+
+    This is intentionally strict (no filename heuristics). Only paths whose
+    relative components include a folder literally named "test" are excluded.
+
+    Examples excluded:
+        - src/test/java/com/example/Foo.java
+        - test/com/example/Foo.java
+
+    Examples included:
+        - src/tests/java/... (folder "tests" is NOT excluded)
+        - src/main/java/.../PaymentServiceTest.java (filename is NOT used)
+
+    Args:
+        path: Candidate filesystem path (file).
+        root: Root directory being scanned.
+
+    Returns:
+        True if the path is under a "test" directory.
+    """
+
+    try:
+        rel = path.resolve().relative_to(root.resolve())
+    except Exception:
+        rel = path
+
+    parts_lower = [p.lower() for p in rel.parts]
+    return "test" in parts_lower
+
+
+def iter_java_files(root_dir: str, *, exclude_tests: bool = True) -> Iterable[Path]:
+    """Yield Java source files under a directory.
+
+    Args:
+        root_dir: Root directory to scan recursively.
+        exclude_tests: If True (default), filters out Java files that are located
+            under a directory named "test" (e.g., under src/test/java).
+
+    Yields:
+        Paths to discovered .java files.
+    """
+
     root = Path(root_dir)
     if not root.exists():
         return []
 
     def _should_skip_dir(p: Path) -> bool:
         name = p.name
-        return name in {".git", ".venv", "venv", "build", "vendor", "chroma_db", "__pycache__"}
+        if name in {".git", ".venv", "venv", "build", "vendor", "chroma_db", "__pycache__"}:
+            return True
+        if exclude_tests and name.lower() == "test":
+            return True
+        return False
 
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if not _should_skip_dir(Path(dirpath) / d)]
 
         for filename in filenames:
-            if filename.endswith(".java"):
-                yield Path(dirpath) / filename
+            if not filename.endswith(".java"):
+                continue
+
+            path = Path(dirpath) / filename
+            if exclude_tests and _is_test_java_path(path, root=root):
+                continue
+            yield path
 
 
-def scan_java_methods(codebase_dir: str, parser: JavaParser) -> List[JavaMethod]:
+def scan_java_methods(codebase_dir: str, parser: JavaParser, *, exclude_tests: bool = True) -> List[JavaMethod]:
+    """Scan a directory for Java files and parse methods/constructors.
+
+    Args:
+        codebase_dir: Root directory to scan.
+        parser: Initialized JavaParser (tree-sitter backed).
+        exclude_tests: If True (default), excludes test-related Java files.
+
+    Returns:
+        List of parsed JavaMethod objects.
+    """
+
     methods: List[JavaMethod] = []
 
-    files = list(iter_java_files(codebase_dir))
+    files = list(iter_java_files(codebase_dir, exclude_tests=exclude_tests))
     logger.info("Scanning %d Java files under %s", len(files), codebase_dir)
 
     for path in files:
@@ -121,7 +183,11 @@ def index_codebase(config: AppConfig) -> int:
     setup_java_language()
 
     parser = JavaParser()
-    methods = scan_java_methods(config.java_codebase_dir, parser)
+    methods = scan_java_methods(
+        config.java_codebase_dir,
+        parser,
+        exclude_tests=bool(getattr(config, "index_exclude_tests", True)),
+    )
 
     project = getattr(config, "project_name", None) or os.getenv("OPEN_DEEPWIKI_PROJECT")
     if project:
@@ -177,6 +243,7 @@ def main(argv: Optional[List[str]] = None) -> None:
             root_dir=Path(config.java_codebase_dir).resolve(),
             config=config,
             output_path=output_path,
+            site_output_dir=None,
             index_into_chroma=bool(getattr(args, "docs_index", False)),
             max_files=getattr(args, "docs_max_files", None),
         )

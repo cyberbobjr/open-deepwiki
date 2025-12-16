@@ -51,6 +51,12 @@ class AppConfig(BaseModel):
     # This summary is heuristic (no LLM required) and is meant to help RAG.
     index_file_summaries: bool = False
 
+    # Indexing: exclude test files
+    # If true (default), indexing skips Java sources located under a directory
+    # literally named "test" (case-insensitive), such as Maven/Gradle layouts
+    # like src/test/java/**.
+    index_exclude_tests: bool = True
+
     # Agent persistence (LangGraph checkpointer)
     # Supported values: "sqlite".
     checkpointer_backend: str = "sqlite"
