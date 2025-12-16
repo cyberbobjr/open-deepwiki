@@ -5,28 +5,45 @@ let mermaidPromise: Promise<any> | null = null
 let mermaidInitialized = false
 let renderSeq = 0
 
+function stripParenthesizedContent(input: string): string {
+  const s = String(input ?? '')
+  let out = ''
+  let depth = 0
+
+  for (let i = 0; i < s.length; i += 1) {
+    const ch = s[i]
+    if (ch === '(') {
+      depth += 1
+      continue
+    }
+    if (ch === ')') {
+      if (depth > 0) depth -= 1
+      continue
+    }
+    if (depth === 0) out += ch
+  }
+
+  return out
+}
+
 function sanitizeMermaidSource(input: string): string {
   const raw = String(input ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
 
-  // LLMs sometimes inject placeholder text like "(...)" or empty "()" tokens.
-  // We only remove the placeholder variants because parentheses are valid Mermaid syntax
-  // (e.g. flowchart node shapes), and stripping all parentheses would break diagrams.
-  const withoutPlaceholders = raw
-    // Remove "(...)" / "( ... )" / "(…)" anywhere.
-    .replace(/\(\s*(?:\.\.\.|…)+\s*\)/g, '')
+  // Aggressive cleanup: remove everything inside parentheses, including nested.
+  // Note: Mermaid uses parentheses for some valid syntax (e.g. flowchart node shapes,
+  // class diagram method args). This sanitizer trades fidelity for robustness.
+  const withoutParens = stripParenthesizedContent(raw)
 
-  const lines = withoutPlaceholders.split('\n')
+  const lines = withoutParens.split('\n')
   const cleanedLines: string[] = []
   for (const line of lines) {
     const trimmed = line.trim()
+    if (!trimmed) continue
 
-    // Drop standalone placeholder lines.
-    if (trimmed === '()') continue
-    if (trimmed === '(...)' || trimmed === '( … )' || trimmed === '(…)') continue
+    // Drop leftover standalone parenthesis tokens.
+    if (trimmed === '()' || trimmed === '(' || trimmed === ')') continue
 
-    // Drop trailing placeholder tokens like " --> B (...)".
-    const strippedTrailing = line.replace(/\s*\(\s*(?:\.\.\.|…)?\s*\)\s*$/g, '')
-    cleanedLines.push(strippedTrailing)
+    cleanedLines.push(line.replace(/[\t ]+$/g, ''))
   }
 
   return cleanedLines.join('\n').trim()
