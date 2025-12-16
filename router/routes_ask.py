@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.messages import AIMessage, HumanMessage
 
+from core.rag.retriever import GraphEnrichedRetriever
 from router.common import get_scoped_retriever, normalize_project
 from router.schemas import (
     AskRequest,
@@ -168,7 +169,7 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
             return
 
         normalized_project = normalize_project(req.project)
-        retriever = get_scoped_retriever(request, project=normalized_project)
+        retriever : GraphEnrichedRetriever = get_scoped_retriever(request, project=normalized_project)
         retriever.k = req.k
 
         docs = retriever.get_relevant_documents(req.question)
@@ -501,7 +502,7 @@ def get_conversation_history(request: Request, req: GetConversationHistoryReques
     )
 
 
-@router.post(
+@router.delete(
     "/sessions/delete",
     response_model=DeleteConversationResponse,
 )

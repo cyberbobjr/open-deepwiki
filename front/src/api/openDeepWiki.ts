@@ -300,7 +300,7 @@ export async function deleteProjectSession(
   sessionId: string,
 ): Promise<DeleteSessionResponse> {
   return requestJson<DeleteSessionResponse>('/sessions/delete', {
-    method: 'POST',
+    method: 'DELETE',
     body: JSON.stringify({ project, session_id: sessionId } satisfies DeleteSessionRequest),
   })
 }
