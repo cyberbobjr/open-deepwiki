@@ -271,6 +271,23 @@ export type DeleteSessionRequest = {
   session_id: string
 }
 
+export type ConversationHistoryMessage = {
+  role: string
+  content: string
+}
+
+export type GetSessionHistoryRequest = {
+  project: string
+  session_id: string
+}
+
+export type GetSessionHistoryResponse = {
+  project: string
+  session_id: string
+  checkpoint_id?: string | null
+  messages: ConversationHistoryMessage[]
+}
+
 export async function listProjectSessions(project: string): Promise<ListSessionsResponse> {
   return requestJson<ListSessionsResponse>('/sessions', {
     method: 'POST',
@@ -285,5 +302,15 @@ export async function deleteProjectSession(
   return requestJson<DeleteSessionResponse>('/sessions/delete', {
     method: 'POST',
     body: JSON.stringify({ project, session_id: sessionId } satisfies DeleteSessionRequest),
+  })
+}
+
+export async function getProjectSessionHistory(
+  project: string,
+  sessionId: string,
+): Promise<GetSessionHistoryResponse> {
+  return requestJson<GetSessionHistoryResponse>('/sessions/history', {
+    method: 'POST',
+    body: JSON.stringify({ project, session_id: sessionId } satisfies GetSessionHistoryRequest),
   })
 }

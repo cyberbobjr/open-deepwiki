@@ -240,6 +240,41 @@ class ListConversationsRequest(BaseModel):
     project: str = Field(..., min_length=1, description="Project scope name (required).")
 
 
+class ConversationHistoryMessage(BaseModel):
+    """A single chat message in a persisted conversation history."""
+
+    role: str = Field(
+        ...,
+        min_length=1,
+        description="Message role (e.g., 'user', 'assistant', 'system', 'tool').",
+    )
+    content: str = Field(..., description="Text content of the message.")
+
+
+class GetConversationHistoryRequest(BaseModel):
+    """Request payload for fetching a persisted conversation history.
+
+    Attributes:
+        project: Project scope name (required).
+        session_id: Conversation session id (required).
+    """
+
+    project: str = Field(..., min_length=1, description="Project scope name (required).")
+    session_id: str = Field(..., min_length=1, description="Conversation session id to fetch.")
+
+
+class GetConversationHistoryResponse(BaseModel):
+    """Response payload containing a persisted conversation history."""
+
+    project: str
+    session_id: str
+    checkpoint_id: Optional[str] = Field(
+        default=None,
+        description="Checkpoint id used as the source of the returned history (if known).",
+    )
+    messages: List[ConversationHistoryMessage]
+
+
 class GenerateJavadocRequest(BaseModel):
     """Start a JavaDoc generation job."""
 

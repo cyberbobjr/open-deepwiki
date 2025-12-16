@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import os
+import json
 from pathlib import Path
-from typing import Any, AsyncIterator, Dict, List
+from typing import Any, AsyncIterator, Dict, List, Optional
 
 import uuid
 from fastapi import APIRouter, HTTPException, Request
@@ -16,6 +17,9 @@ from router.schemas import (
     AskResponse,
     DeleteConversationResponse,
     DeleteConversationRequest,
+    ConversationHistoryMessage,
+    GetConversationHistoryRequest,
+    GetConversationHistoryResponse,
     ListConversationsResponse,
     ListConversationsRequest,
     QueryResult,
@@ -23,6 +27,111 @@ from router.schemas import (
 
 
 router = APIRouter()
+
+
+def _stringify_message_content(content: Any) -> str:
+    """Convert a LangChain message content value to a displayable string.
+
+    Args:
+        content: Message content value. May be a string or structured content.
+
+    Returns:
+        A string representation suitable for JSON transport.
+    """
+
+    if isinstance(content, str):
+        return content
+    if content is None:
+        return ""
+    try:
+        return json.dumps(content, ensure_ascii=False)
+    except Exception:
+        return str(content)
+
+
+def _message_role_and_content(message: Any) -> tuple[str, str]:
+    """Normalize a LangChain/LangGraph message to a simple role/content tuple.
+
+    Args:
+        message: A LangChain message object or a serialized dict-like message.
+
+    Returns:
+        (role, content) where role is one of: user/assistant/system/tool/unknown.
+    """
+
+    try:
+        from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+
+        if isinstance(message, HumanMessage):
+            return ("user", _stringify_message_content(getattr(message, "content", "")))
+        if isinstance(message, AIMessage):
+            return ("assistant", _stringify_message_content(getattr(message, "content", "")))
+        if isinstance(message, SystemMessage):
+            return ("system", _stringify_message_content(getattr(message, "content", "")))
+        if isinstance(message, BaseMessage):
+            msg_type = str(getattr(message, "type", "") or "unknown").lower()
+            role_map = {
+                "human": "user",
+                "ai": "assistant",
+                "system": "system",
+                "tool": "tool",
+            }
+            role = role_map.get(msg_type, msg_type or "unknown")
+            return (role, _stringify_message_content(getattr(message, "content", "")))
+    except Exception:
+        # Best-effort fallback if langchain types are unavailable.
+        pass
+
+    if isinstance(message, dict):
+        role_raw = (
+            message.get("role")
+            or message.get("type")
+            or message.get("message_type")
+            or "unknown"
+        )
+        role = str(role_raw).lower().strip() or "unknown"
+        role_map = {
+            "human": "user",
+            "ai": "assistant",
+        }
+        role = role_map.get(role, role)
+        return (role, _stringify_message_content(message.get("content")))
+
+    return ("unknown", _stringify_message_content(getattr(message, "content", message)))
+
+
+def _extract_history_messages(channel_values: dict[str, Any]) -> list[Any]:
+    """Extract the conversation history messages list from checkpoint channel values.
+
+    Args:
+        channel_values: The `checkpoint['channel_values']` mapping from a LangGraph checkpoint.
+
+    Returns:
+        A list of message objects (often LangChain BaseMessage instances). Returns an empty
+        list if no suitable messages list is found.
+    """
+
+    # Most common key for agent graphs that use a message state.
+    primary = channel_values.get("messages")
+    if isinstance(primary, list):
+        return primary
+
+    for key in ("chat_history", "history", "conversation"):
+        val = channel_values.get(key)
+        if isinstance(val, list):
+            return val
+
+    # Fallback: scan for a list that looks like messages.
+    try:
+        from langchain_core.messages import BaseMessage
+
+        for val in channel_values.values():
+            if isinstance(val, list) and any(isinstance(x, BaseMessage) for x in val):
+                return val
+    except Exception:
+        pass
+
+    return []
 
 
 @router.post("/ask/stream")
@@ -300,6 +409,96 @@ def list_conversation_sessions(request: Request, req: ListConversationsRequest) 
         sessions = list(checkpointer.list_threads_namespace(checkpoint_ns=normalized_project))
 
     return ListConversationsResponse(project=normalized_project, sessions=sessions)
+
+
+@router.post("/sessions/history", response_model=GetConversationHistoryResponse)
+def get_conversation_history(request: Request, req: GetConversationHistoryRequest) -> GetConversationHistoryResponse:
+    """Fetch the persisted message history for a conversation session.
+
+    This reads the latest checkpoint for (session_id, project) from the configured
+    checkpointer backend.
+
+    Args:
+        request: FastAPI request.
+        req: Request payload containing the project scope and session id.
+
+    Returns:
+        Response payload containing the messages for the session.
+
+    Raises:
+        HTTPException: If startup failed, the backend is unsupported, or the session does not exist.
+    """
+
+    if getattr(request.app.state, "startup_error", None):
+        raise HTTPException(
+            status_code=503, detail=f"Startup failed: {request.app.state.startup_error}"
+        )
+
+    normalized_project = normalize_project(req.project)
+    sid = str(req.session_id or "").strip()
+    if not sid:
+        raise HTTPException(status_code=400, detail="session_id is required")
+
+    from utils.sqlite_checkpointer import SqliteCheckpointSaver
+
+    config = getattr(request.app.state, "config", None)
+    cp_backend = str(getattr(config, "checkpointer_backend", "sqlite") or "sqlite").lower()
+    if cp_backend != "sqlite":
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unsupported checkpointer_backend: {cp_backend!r} (supported: 'sqlite')",
+        )
+
+    cp_path = str(getattr(config, "checkpointer_sqlite_path", "./checkpoints.sqlite3") or "./checkpoints.sqlite3")
+    cp_path_key = str(Path(cp_path).expanduser().resolve())
+
+    if not hasattr(request.app.state, "checkpointers"):
+        request.app.state.checkpointers = {}
+    checkpointers: Dict[str, Any] = request.app.state.checkpointers
+    if cp_path_key not in checkpointers:
+        checkpointers[cp_path_key] = SqliteCheckpointSaver(sqlite_path=cp_path_key)
+    checkpointer = checkpointers[cp_path_key]
+
+    tup = None
+    if hasattr(checkpointer, "get_tuple"):
+        tup = checkpointer.get_tuple(
+            {
+                "configurable": {
+                    "thread_id": sid,
+                    "checkpoint_ns": normalized_project or "",
+                }
+            }
+        )
+
+    if tup is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    checkpoint: Dict[str, Any] = tup.checkpoint if isinstance(tup.checkpoint, dict) else {}
+    channel_values: Dict[str, Any] = checkpoint.get("channel_values", {}) if isinstance(checkpoint, dict) else {}
+
+    raw_messages = _extract_history_messages(channel_values)
+    serialized: List[ConversationHistoryMessage] = []
+    for m in raw_messages:
+        role, content = _message_role_and_content(m)
+        if content.strip() or role != "unknown":
+            serialized.append(ConversationHistoryMessage(role=role, content=content))
+
+    checkpoint_id: Optional[str] = None
+    try:
+        cfg = getattr(tup, "config", None) or {}
+        conf = cfg.get("configurable", {}) if isinstance(cfg, dict) else {}
+        checkpoint_id_val = conf.get("checkpoint_id")
+        if checkpoint_id_val is not None:
+            checkpoint_id = str(checkpoint_id_val)
+    except Exception:
+        checkpoint_id = None
+
+    return GetConversationHistoryResponse(
+        project=normalized_project,
+        session_id=sid,
+        checkpoint_id=checkpoint_id,
+        messages=serialized,
+    )
 
 
 @router.post(

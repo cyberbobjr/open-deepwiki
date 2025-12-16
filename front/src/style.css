@@ -82,6 +82,28 @@ button:disabled {
   fill: currentColor;
 }
 
+/* Collapsible panels (used by chat details file cards) */
+.odw-collapse-enter-active,
+.odw-collapse-leave-active {
+  transition: max-height 220ms ease, opacity 220ms ease;
+}
+
+.odw-collapse-enter-from,
+.odw-collapse-leave-to {
+  max-height: 0;
+  opacity: 0;
+}
+
+.odw-collapse-enter-to,
+.odw-collapse-leave-from {
+  max-height: 2000px;
+  opacity: 1;
+}
+
+.odw-collapsible-body {
+  overflow: hidden;
+}
+
 .chat-markdown :where(code) {
   @apply rounded bg-slate-100 px-1 py-0.5 font-mono;
   font-size: 0.875em;

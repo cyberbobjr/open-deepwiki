@@ -7,6 +7,9 @@ import * as MarkdownIt from 'markdown-it'
 
 import { installMermaidFence, renderMermaidInRoot } from '../utils/mermaid'
 
+import ConfirmModal from '../components/ConfirmModal.vue'
+import Panel from '../components/Panel.vue'
+
 import { useChatStore } from '../stores/chat'
 import type { QueryResult } from '../api/openDeepWiki'
 
@@ -78,13 +81,6 @@ function renderMarkdownWithToc(markdown: string): { html: string; toc: TocItem[]
 
   const sanitized = DOMPurify.sanitize(container.innerHTML)
   return { html: sanitized, toc: items }
-}
-
-function tocIndentClass(level: number): string {
-  if (level <= 2) return ''
-  if (level === 3) return 'pl-3'
-  if (level === 4) return 'pl-6'
-  return 'pl-9'
 }
 
 function extractAnchorHref(evt: MouseEvent): string | undefined {
@@ -162,6 +158,25 @@ const docTitle = ref<string>('')
 const docContentEl = ref<HTMLElement | null>(null)
 const docRenderedHtml = ref('')
 const docToc = ref<TocItem[]>([])
+
+const detailsHidden = ref(false)
+
+function toggleDetailsHidden(): void {
+  detailsHidden.value = !detailsHidden.value
+}
+
+const pendingDeleteSessionId = ref<string | null>(null)
+const deletingSession = ref(false)
+
+const deleteSessionModalOpen = computed(() => pendingDeleteSessionId.value !== null)
+
+const deleteSessionModalMessage = computed(() => {
+  const id = pendingDeleteSessionId.value
+  if (!id) return ''
+  const base = `This will delete the server-side conversation session: ${id}`
+  if (!thread.value.error) return base
+  return `${base}\n\nError: ${thread.value.error}`
+})
 
 function docsBaseForProject(projectName: string): string {
   const p = encodeURIComponent(String(projectName || '').trim())
@@ -279,8 +294,6 @@ function onDocMarkdownClick(evt: MouseEvent): void {
   openMarkdownDoc(resolved, { hash: parts.hash })
 }
 
-const selectedContextIndex = ref(0)
-
 async function sendText(text: string): Promise<void> {
   const q = String(text || '').trim()
   if (!q || thread.value.loading) return
@@ -297,12 +310,28 @@ async function send(): Promise<void> {
   await sendText(q)
 }
 
-watch(
-  () => thread.value.context,
-  (ctx) => {
-    if (ctx && ctx.length > 0) selectedContextIndex.value = 0
-  },
-)
+function requestDeleteCurrentSession(): void {
+  const id = String(thread.value.sessionId ?? '').trim()
+  if (!id) return
+  thread.value.error = undefined
+  pendingDeleteSessionId.value = id
+}
+
+function cancelDeleteSession(): void {
+  pendingDeleteSessionId.value = null
+}
+
+async function confirmDeleteSession(): Promise<void> {
+  const id = pendingDeleteSessionId.value
+  if (!id) return
+  deletingSession.value = true
+  try {
+    await chat.deleteSession(project.value, id)
+    if (!thread.value.error) pendingDeleteSessionId.value = null
+  } finally {
+    deletingSession.value = false
+  }
+}
 
 const messages = computed(() => thread.value.messages ?? [])
 
@@ -317,13 +346,91 @@ watch(
   () => scheduleMermaidRender(),
 )
 
-const selectedContext = computed<QueryResult | undefined>(() => {
-  const ctx: QueryResult[] = thread.value.context ?? []
-  const idx = Math.max(0, Math.min(selectedContextIndex.value, ctx.length - 1))
-  return ctx[idx]
+const contexts = computed<QueryResult[]>(() => thread.value.context ?? [])
+
+type FileContextGroup = {
+  filePath: string
+  items: QueryResult[]
+}
+
+function isSourceFilePath(filePath: string): boolean {
+  const p = String(filePath || '').trim().toLowerCase()
+  if (!p) return false
+  const ext = p.includes('.') ? p.split('.').pop() ?? '' : ''
+  return [
+    'java',
+    'py',
+    'ts',
+    'tsx',
+    'js',
+    'jsx',
+    'go',
+    'rs',
+    'c',
+    'h',
+    'cpp',
+    'hpp',
+    'cs',
+    'kt',
+    'swift',
+    'scala',
+    'rb',
+    'php',
+  ].includes(ext)
+}
+
+function formatLineNumber(n: number, width: number): string {
+  const s = String(n)
+  if (s.length >= width) return s
+  return `${' '.repeat(width - s.length)}${s}`
+}
+
+function withLineNumbers(code: string, startLine: number): string {
+  const lines = String(code ?? '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n')
+  const start = Number.isFinite(startLine) && startLine > 0 ? startLine : 1
+  const end = start + Math.max(0, lines.length - 1)
+  const width = Math.max(String(start).length, String(end).length)
+  return lines.map((line, i) => `${formatLineNumber(start + i, width)} | ${line}`).join('\n')
+}
+
+function codeForContext(c: QueryResult): string {
+  const code = extractCodeFromPageContent(String(c?.page_content ?? ''))
+  const start = Number(c?.start_line)
+  const fp = String(c?.file_path ?? '').trim()
+  if (fp && isSourceFilePath(fp) && Number.isFinite(start) && start > 0) {
+    return withLineNumbers(code, start)
+  }
+  return code
+}
+
+const fileContextGroups = computed<FileContextGroup[]>(() => {
+  const out: FileContextGroup[] = []
+  const indexByPath = new Map<string, number>()
+
+  for (const c of contexts.value) {
+    const fp = String(c?.file_path ?? '').trim() || 'snippet'
+    const existing = indexByPath.get(fp)
+    if (existing === undefined) {
+      indexByPath.set(fp, out.length)
+      out.push({ filePath: fp, items: [c] })
+    } else {
+      out[existing]?.items.push(c)
+    }
+  }
+
+  return out
 })
 
-const contexts = computed<QueryResult[]>(() => thread.value.context ?? [])
+const collapsedFileCards = ref<Record<string, boolean>>({})
+
+function isFileCardCollapsed(filePath: string): boolean {
+  return collapsedFileCards.value[String(filePath || '')] === true
+}
+
+function toggleFileCard(filePath: string): void {
+  const key = String(filePath || '')
+  collapsedFileCards.value[key] = !isFileCardCollapsed(key)
+}
 
 function fileNameFromPath(pathValue: string): string {
   const p = String(pathValue || '').trim()
@@ -341,10 +448,6 @@ function extractCodeFromPageContent(pageContent: string): string {
   const idx2 = text.indexOf(marker2)
   if (idx2 >= 0) return text.slice(idx2 + marker2.length)
   return text
-}
-
-function contextTitle(c: QueryResult | undefined): string {
-  return String(c?.signature || c?.id || 'context')
 }
 
 function contextLocation(c: QueryResult | undefined): string {
@@ -387,6 +490,18 @@ onMounted(() => scheduleMermaidRender())
 
 <template>
   <div class="h-screen w-full overflow-hidden">
+    <ConfirmModal
+      :open="deleteSessionModalOpen"
+      mode="confirm"
+      title="Delete this session?"
+      :message="deleteSessionModalMessage"
+      confirmText="Delete"
+      cancelText="Cancel"
+      :busy="deletingSession"
+      @cancel="cancelDeleteSession"
+      @confirm="confirmDeleteSession"
+    />
+
     <div class="mx-auto flex h-full w-full max-w-6xl flex-col overflow-hidden px-6 py-6">
       <div class="flex shrink-0 items-center justify-between gap-4">
         <div class="flex items-center gap-3">
@@ -395,12 +510,34 @@ onMounted(() => scheduleMermaidRender())
           </RouterLink>
           <h1 class="text-lg font-semibold text-slate-900">{{ project }}</h1>
         </div>
-        <div class="text-xs text-slate-500" v-if="thread.sessionId">Session: {{ thread.sessionId }}</div>
+        <div class="flex items-center gap-3">
+          <button
+            type="button"
+            class="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"
+            @click="toggleDetailsHidden"
+          >
+            {{ detailsHidden ? 'Show details' : 'Focus chat' }}
+          </button>
+
+          <template v-if="thread.sessionId">
+            <div class="text-xs text-slate-500">Session: {{ thread.sessionId }}</div>
+            <button
+              type="button"
+              class="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"
+              @click="requestDeleteCurrentSession"
+            >
+              Delete session
+            </button>
+          </template>
+        </div>
       </div>
 
-      <div class="mt-6 flex min-h-0 flex-1 overflow-hidden gap-4">
-        <!-- Left: conversation -->
-        <section class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div class="mt-6 flex min-h-0 flex-1 flex-col gap-4 overflow-hidden lg:flex-row">
+        <!-- Left: conversation (~40%) -->
+        <section
+          class="flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white"
+          :class="detailsHidden ? 'lg:w-full' : 'lg:w-2/5'"
+        >
           <div class="border-b border-slate-200 p-4">
             <div class="text-sm font-semibold text-slate-900">Conversation</div>
           </div>
@@ -425,85 +562,7 @@ onMounted(() => scheduleMermaidRender())
               </div>
             </div>
 
-            <div v-if="contexts.length > 0" class="mt-8">
-              <div class="text-xs font-semibold text-slate-700">File references</div>
-              <div class="mt-3 flex flex-col gap-2">
-                <button
-                  v-for="(c, idx) in contexts"
-                  :key="idx"
-                  type="button"
-                  class="flex items-center justify-between gap-3 rounded-md border border-slate-200 bg-white px-3 py-2 text-left"
-                  :class="idx === selectedContextIndex ? 'border-slate-900' : ''"
-                  @click="selectedContextIndex = idx"
-                >
-                  <div class="min-w-0">
-                    <div class="truncate text-sm font-medium text-slate-900" :title="contextTitle(c)">
-                      {{ contextTitle(c) }}
-                    </div>
-                    <div class="truncate text-xs text-slate-600" :title="contextLocation(c)">
-                      {{ contextLocation(c) || 'unknown location' }}
-                    </div>
-                  </div>
-                  <div class="text-xs text-slate-500">Preview</div>
-                </button>
-              </div>
-            </div>
-
             <p v-if="thread.error" class="mt-4 text-sm text-red-700">{{ thread.error }}</p>
-          </div>
-
-          <!-- In-panel markdown document viewer + ToC (opened by clicking .md links) -->
-          <div v-if="docOpen" class="shrink-0 border-t border-slate-200 bg-white">
-            <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-              <div class="min-w-0">
-                <div class="truncate text-sm font-semibold text-slate-900" :title="docTitle || 'Document'">
-                  {{ docTitle || 'Document' }}
-                </div>
-                <div v-if="docUrl" class="truncate text-xs text-slate-600" :title="docUrl">{{ docUrl }}</div>
-              </div>
-              <button
-                type="button"
-                class="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"
-                @click="closeMarkdownDoc"
-              >
-                Close
-              </button>
-            </div>
-
-            <div class="flex h-80 min-h-0 overflow-hidden">
-              <div ref="docContentEl" class="min-w-0 flex-1 overflow-auto p-4">
-                <div v-if="docLoading" class="text-sm text-slate-600">Loading…</div>
-                <div v-else-if="docError" class="text-sm text-red-700">{{ docError }}</div>
-                <div
-                  v-else
-                  class="chat-markdown"
-                  v-html="docRenderedHtml"
-                  @click="onDocMarkdownClick"
-                ></div>
-              </div>
-
-              <aside class="w-64 shrink-0 border-l border-slate-200 bg-white">
-                <div class="border-b border-slate-200 px-4 py-3">
-                  <div class="text-sm font-semibold text-slate-900">On this page</div>
-                </div>
-                <div class="max-h-full overflow-auto p-4">
-                  <div v-if="docToc.length === 0" class="text-xs text-slate-600">No headings.</div>
-                  <nav v-else class="flex flex-col gap-2">
-                    <a
-                      v-for="item in docToc"
-                      :key="item.id"
-                      href="#"
-                      class="truncate text-xs text-slate-700 hover:underline"
-                      :class="tocIndentClass(item.level)"
-                      :title="item.text"
-                      @click.prevent="scrollToDocHeading(item.id)"
-                    >
-                      {{ item.text }}
-                    </a>
-                  </nav>
-                </div>
-              </aside>
-            </div>
           </div>
 
           <!-- Bottom input (pinned) -->
@@ -542,35 +601,64 @@ onMounted(() => scheduleMermaidRender())
           </form>
         </section>
 
-        <!-- Right: preview -->
-        <aside class="flex w-96 shrink-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white">
+        <!-- Right: details (remaining space) -->
+        <aside
+          v-if="!detailsHidden"
+          class="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white"
+        >
           <div class="border-b border-slate-200 p-4">
-            <div class="text-sm font-semibold text-slate-900">Code</div>
-            <div v-if="selectedContext" class="mt-1 text-xs text-slate-600">
-              {{ contextLocation(selectedContext) || 'No file information for this snippet.' }}
-            </div>
-          </div>
-
-          <div class="border-b border-slate-200 px-2 py-2">
-            <div class="flex gap-2 overflow-auto">
-              <button
-                v-for="(c, idx) in contexts"
-                :key="idx"
-                type="button"
-                class="shrink-0 rounded-md border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-900"
-                :class="idx === selectedContextIndex ? 'border-slate-900 font-semibold' : ''"
-                @click="selectedContextIndex = idx"
-                :title="contextLocation(c)"
-              >
-                {{ fileNameFromPath(String(c.file_path || 'snippet')) || 'snippet' }}
-              </button>
-            </div>
+            <div class="text-sm font-semibold text-slate-900">Details</div>
+            <div class="mt-1 text-xs text-slate-600">Files retrieved for this conversation.</div>
           </div>
 
           <div class="min-h-0 flex-1 overflow-auto p-4">
-            <div v-if="!selectedContext" class="text-sm text-slate-600">Select a source to preview code.</div>
-            <div v-else>
-              <pre class="whitespace-pre-wrap text-xs text-slate-900">{{ extractCodeFromPageContent(selectedContext.page_content) }}</pre>
+            <div v-if="docOpen" class="mb-4 rounded-lg border border-slate-200 bg-white">
+              <div class="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                <div class="min-w-0">
+                  <div class="truncate text-sm font-semibold text-slate-900" :title="docTitle || 'Document'">
+                    {{ docTitle || 'Document' }}
+                  </div>
+                  <div v-if="docUrl" class="truncate text-xs text-slate-600" :title="docUrl">{{ docUrl }}</div>
+                </div>
+                <button
+                  type="button"
+                  class="h-8 rounded-md border border-slate-200 bg-white px-2 text-xs text-slate-700"
+                  @click="closeMarkdownDoc"
+                >
+                  Close
+                </button>
+              </div>
+
+              <div ref="docContentEl" class="h-80 overflow-auto p-4">
+                <div v-if="docLoading" class="text-sm text-slate-600">Loading…</div>
+                <div v-else-if="docError" class="text-sm text-red-700">{{ docError }}</div>
+                <div v-else class="chat-markdown" v-html="docRenderedHtml" @click="onDocMarkdownClick"></div>
+              </div>
+            </div>
+
+            <div v-if="fileContextGroups.length === 0" class="text-sm text-slate-600">No file references yet.</div>
+
+            <div v-else class="flex flex-col gap-4">
+              <Panel
+                v-for="group in fileContextGroups"
+                :key="group.filePath"
+                :title="fileNameFromPath(group.filePath) || group.filePath"
+                :subtitle="group.filePath !== 'snippet' ? group.filePath : undefined"
+                collapsible
+                :collapsed="isFileCardCollapsed(group.filePath)"
+                @toggle="toggleFileCard(group.filePath)"
+              >
+                <template #headerRight>
+                  <div class="text-xs text-slate-500">{{ group.items.length }} hit(s)</div>
+                </template>
+
+                <div class="flex flex-col gap-3 p-4">
+                  <div v-for="(c, idx) in group.items" :key="idx">
+                    <div class="text-xs text-slate-600">{{ contextLocation(c) || 'unknown location' }}</div>
+                    <pre class="mt-2 overflow-auto rounded-md bg-slate-50 p-3 text-xs text-slate-900 whitespace-pre">{{ codeForContext(c) }}</pre>
+                  </div>
+                </div>
+              </Panel>
             </div>
           </div>
         </aside>
