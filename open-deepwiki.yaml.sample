@@ -132,3 +132,12 @@ checkpointer_sqlite_path: ./checkpoints.sqlite3
 # Stores a lightweight project graph (files/methods + best-effort call edges) used to
 # generate a "project overview" document and power graph tools.
 project_graph_sqlite_path: ./project_graph.sqlite3
+
+# Repositories configuration (Optional)
+# Define a list of repositories (GitHub, GitLab, etc.) to list projects from.
+repositories:
+  - name: my-github
+    type: github
+    # url: https://api.github.com  # Optional, defaults to public GitHub API
+    # token: sk-...                # Optional Personal Access Token
+    # namespace: my-org            # Optional: filter by user or organization

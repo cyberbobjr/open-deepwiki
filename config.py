@@ -2,13 +2,21 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
 from pydantic import BaseModel
 
 
 DEFAULT_CONFIG_PATH = "open-deepwiki.yaml"
+
+
+class RepositoryConfig(BaseModel):
+    name: str
+    type: str  # e.g., "github", "gitlab"
+    url: Optional[str] = None  # Base URL for the API (e.g. for enterprise instances)
+    token: Optional[str] = None
+    namespace: Optional[str] = None  # User or organization to filter projects
 
 
 class AppConfig(BaseModel):
@@ -113,6 +121,9 @@ class AppConfig(BaseModel):
     # If `tiktoken_prefetch_encodings` is not set, defaults to ["cl100k_base"].
     tiktoken_prefetch: bool = False
     tiktoken_prefetch_encodings: Optional[list[str]] = None
+
+    # Repositories configuration
+    repositories: List[RepositoryConfig] = []
 
 
 def apply_config_to_env(config: AppConfig) -> None:

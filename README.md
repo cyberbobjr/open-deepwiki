@@ -72,6 +72,12 @@ You can also use the CLI indexer:
 ./venv/bin/python indexer.py --config open-deepwiki.yaml
 ```
 
+To use the interactive mode for cloning and indexing projects from configured repositories:
+
+```bash
+./venv/bin/python indexer.py --interactive
+```
+
 ## API and examples
 
 See [USAGE.md](USAGE.md) for endpoint list and curl examples.

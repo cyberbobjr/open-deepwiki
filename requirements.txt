@@ -4,6 +4,9 @@ fastapi
 uvicorn[standard]
 PyYAML
 python-dotenv
+requests
+gitpython
+pydantic
 
 # LangChain (latest)
 langchain
