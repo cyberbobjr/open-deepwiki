@@ -121,6 +121,21 @@ Indexes all `.java` files under the configured directory (`java_codebase_dir`) a
 ./venv/bin/python indexer.py --config open-deepwiki.yaml
 ```
 
+### Interactive Indexing from Repository
+
+You can configure repositories in `open-deepwiki.yaml` (see sample) and use the interactive mode to select a project and branch to clone and index.
+
+```bash
+./venv/bin/python indexer.py --interactive
+```
+
+This will:
+1. Ask you to select a configured repository source.
+2. List available projects.
+3. List available branches for the selected project.
+4. Clone the selected branch to a local directory.
+5. Index the cloned code.
+
 Useful variables:
 - `CHROMA_PERSIST_DIR` (default `./chroma_db`)
 - `CHROMA_COLLECTION` (default `java_methods`)

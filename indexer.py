@@ -3,17 +3,20 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import shutil
+import sys
 from pathlib import Path
-from typing import Callable, Iterable, List, Optional, Protocol
+from typing import Callable, Iterable, List, Optional, Protocol, Union
 
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 
-from config import AppConfig, apply_config_to_env, configure_logging, load_config, prefetch_tiktoken_encodings
+from config import AppConfig, RepositoryConfig, apply_config_to_env, configure_logging, load_config, prefetch_tiktoken_encodings
 from core.parsing.java_parser import JavaMethod, JavaParser
 from core.rag.embeddings import create_embeddings
 from core.rag.indexing import index_java_file_summaries, index_java_methods
 from core.parsing.tree_sitter_setup import setup_java_language
+from core.repository import get_repository_client, ProjectInfo, RepositoryClient
 
 
 logger = logging.getLogger(__name__)
@@ -68,6 +71,11 @@ def _parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         type=int,
         default=None,
         help="Optional cap on number of Java files to summarize when generating docs",
+    )
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="If set, allows choosing a repository/project/branch to clone and index",
     )
     return parser.parse_args(argv)
 
@@ -256,6 +264,87 @@ def index_codebase(config: AppConfig) -> int:
     return len(method_docs_map)
 
 
+def prompt_user_choice(options: List[str], prompt_text: str) -> int:
+    print(f"\n{prompt_text}")
+    for idx, option in enumerate(options):
+        print(f"{idx + 1}. {option}")
+
+    while True:
+        try:
+            choice = input(f"Enter choice [1-{len(options)}]: ")
+            idx = int(choice) - 1
+            if 0 <= idx < len(options):
+                return idx
+            print("Invalid choice, please try again.")
+        except ValueError:
+            print("Please enter a number.")
+
+
+def interactive_mode(config: AppConfig) -> AppConfig:
+    if not config.repositories:
+        print("No repositories configured in configuration file.")
+        return config
+
+    # 1. Select Repository Source
+    repo_names = [f"{r.name} ({r.type})" for r in config.repositories]
+    repo_idx = prompt_user_choice(repo_names, "Select Repository Source:")
+    selected_repo_config = config.repositories[repo_idx]
+
+    client = get_repository_client(selected_repo_config)
+    if not client:
+        print(f"Could not create client for {selected_repo_config.type}")
+        sys.exit(1)
+
+    print(f"\nFetching projects from {selected_repo_config.name}...")
+    projects = client.list_projects()
+    if not projects:
+        print("No projects found.")
+        sys.exit(1)
+
+    # 2. Select Project
+    project_options = [f"{p.name} ({p.url})" for p in projects]
+    project_idx = prompt_user_choice(project_options, "Select Project:")
+    selected_project = projects[project_idx]
+
+    print(f"\nFetching branches for {selected_project.name}...")
+    branches = client.list_branches(selected_project.name)
+    if not branches:
+        print("No branches found (using default).")
+        branches = [selected_project.default_branch]
+
+    # 3. Select Branch
+    branch_idx = prompt_user_choice(branches, "Select Branch:")
+    selected_branch = branches[branch_idx]
+
+    # 4. Clone
+    target_dir = Path("cloned_projects") / selected_project.name.replace("/", "_") / selected_branch
+    if target_dir.exists():
+        print(f"\nTarget directory {target_dir} exists. Removing...")
+        shutil.rmtree(target_dir)
+
+    print(f"\nCloning {selected_project.url} (branch: {selected_branch}) into {target_dir}...")
+    try:
+        import git
+        git.Repo.clone_from(selected_project.url, target_dir, branch=selected_branch)
+    except ImportError:
+        print("GitPython is required for cloning. Please install it with 'pip install gitpython'.")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Failed to clone repository: {e}")
+        sys.exit(1)
+
+    print("Clone successful.")
+
+    # Update config to point to the cloned directory
+    config.java_codebase_dir = str(target_dir)
+
+    # Set project name if not already set, using the repo name
+    if not config.project_name:
+        config.project_name = selected_project.name
+
+    return config
+
+
 def main(argv: Optional[List[str]] = None) -> None:
     load_dotenv(override=False)
 
@@ -269,6 +358,9 @@ def main(argv: Optional[List[str]] = None) -> None:
 
     # Force-download/cache tiktoken encodings early if configured.
     prefetch_tiktoken_encodings(config)
+
+    if args.interactive:
+        config = interactive_mode(config)
 
     logger.info(
         "Indexing Java codebase dir=%s (config=%s)",
