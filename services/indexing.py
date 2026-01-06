@@ -13,8 +13,7 @@ from langchain_openai import ChatOpenAI
 
 from config import AppConfig
 # Documentation / RAG imports
-from core.documentation.feature_extractor import (generate_feature_summary,
-                                                  generate_module_summary,
+from core.documentation.feature_extractor import (generate_module_summary,
                                                   generate_project_overview)
 from core.documentation.site_generator import write_feature_docs_site
 from core.parsing.java_parser import JavaParser
@@ -265,7 +264,7 @@ def run_index_directory_job(
                     for folder, summaries in files_by_dir.items():
                         # We call it "feature" or "module".
                         # Let's assume each folder is a feature for now.
-                        feat_sum = generate_feature_summary(folder, summaries, llm)
+                        feat_sum = generate_module_summary(Path(folder), summaries, llm)
                         feature_summaries[folder] = feat_sum
 
                     # 2. Project Overview from feature summaries
