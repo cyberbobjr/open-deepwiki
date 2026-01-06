@@ -41,6 +41,13 @@ docs_feature_batch_size: 10
 # Helps RAG answer file-level questions without reading every method.
 index_file_summaries: false
 
+# Optional: index non-Java resources (YAML, JSON, properties, text)
+# Files matching these extensions will be chunked and indexed as generic text documents.
+index_resources: true
+resource_extensions: [".yaml", ".yml", ".json", ".xml", ".properties", ".txt", ".md"]
+# Token limit for chunks of generic resource files (default 1000)
+resource_chunk_size: 1000
+
 
 
 
