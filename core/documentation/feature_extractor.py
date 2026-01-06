@@ -276,7 +276,11 @@ def generate_project_overview(root_dir: Path, module_summaries: Dict[str, str], 
             "You are writing a DeepWiki-style documentation page for a software project. "
             "Use only the provided module summaries. Return clean Markdown. "
             "You may include Mermaid diagrams if (and only if) they materially improve understanding. "
-            "If you include a diagram, use a fenced Mermaid block: ```mermaid\n...\n``` and keep it simple. "
+            "If you include a diagram, use a fenced Mermaid block: ```mermaid\n...\n```. "
+            "Keep diagrams simple. IMPORTANT: "
+            "1) Do not use parentheses or brackets in node IDs (e.g., use `id1[Label]` not `id(1)[Label]`). "
+            "2) Escape special characters in labels with double quotes. "
+            "3) Do not use complex styling."
             "Do not include any other fenced code blocks."
         )
     )

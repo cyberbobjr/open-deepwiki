@@ -11,10 +11,7 @@ api_port: 8000
 # If false, no CORS middleware is installed.
 cors_enabled: false
 
-# JavaDoc generation
-# If an existing JavaDoc has fewer meaningful content lines than this value,
-# it will be replaced ("improved").
-javadoc_min_meaningful_lines: 3
+
 
 # Chroma
 # Disable anonymized telemetry (see https://docs.trychroma.com/telemetry)
@@ -43,6 +40,10 @@ docs_feature_batch_size: 10
 # Optional: index one heuristic summary document per Java file.
 # Helps RAG answer file-level questions without reading every method.
 index_file_summaries: false
+
+
+
+
 
 # Optional: exclude test-related Java sources during indexing.
 # If true (default), files located under a directory named "test" (case-insensitive)

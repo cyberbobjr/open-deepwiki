@@ -5,7 +5,6 @@ from typing import Any, Dict
 
 from fastapi import APIRouter, Request
 
-
 router = APIRouter()
 
 
@@ -31,7 +30,7 @@ def health(request: Request) -> Dict[str, Any]:
         "java_codebase_dir": getattr(config, "java_codebase_dir", "./"),
         "project_name": getattr(config, "project_name", None),
         "default_project": None,
-        "javadoc_min_meaningful_lines": getattr(config, "javadoc_min_meaningful_lines", 3),
+
         "chroma_anonymized_telemetry": getattr(config, "chroma_anonymized_telemetry", False),
         "startup_error": getattr(request.app.state, "startup_error", None),
         "has_openai_api_key": bool(os.getenv("OPENAI_API_KEY")),

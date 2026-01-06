@@ -7,7 +7,6 @@ from typing import Any, Dict, Optional
 import yaml
 from pydantic import BaseModel
 
-
 DEFAULT_CONFIG_PATH = "open-deepwiki.yaml"
 
 
@@ -27,11 +26,6 @@ class AppConfig(BaseModel):
     # When False, no CORS middleware is installed.
     cors_enabled: bool = False
 
-    # JavaDoc generation
-    # Existing JavaDoc blocks with fewer than this number of "meaningful" content lines
-    # will be regenerated (replaced). See core/documentation/javadoc_generator.py.
-    javadoc_min_meaningful_lines: int = 3
-
     # Documentation site output
     # Base directory where generated docs artifacts are written.
     # Used by both CLI generation and the /index-directory route.
@@ -40,6 +34,10 @@ class AppConfig(BaseModel):
     # Feature docs generation tuning
     # Number of file summaries to classify per LLM call when building feature pages.
     docs_feature_batch_size: int = 10
+
+
+
+
 
     # Chroma
     # Chroma enables anonymized telemetry by default; set this to False to opt out.
@@ -50,6 +48,8 @@ class AppConfig(BaseModel):
     # If true, indexing can add one extra "file summary" document per Java file.
     # This summary is heuristic (no LLM required) and is meant to help RAG.
     index_file_summaries: bool = False
+
+
 
     # Indexing: exclude test files
     # If true (default), indexing skips Java sources located under a directory
