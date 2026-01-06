@@ -278,9 +278,11 @@ def generate_project_overview(root_dir: Path, module_summaries: Dict[str, str], 
             "You may include Mermaid diagrams if (and only if) they materially improve understanding. "
             "If you include a diagram, use a fenced Mermaid block: ```mermaid\n...\n```. "
             "Keep diagrams simple. IMPORTANT: "
-            "1) Do not use parentheses or brackets in node IDs (e.g., use `id1[Label]` not `id(1)[Label]`). "
-            "2) Escape special characters in labels with double quotes. "
-            "3) Do not use complex styling."
+            "1) Use ONLY alphanumeric characters for node IDs (e.g., `id1`). NO parentheses, NO brackets. "
+            "2) Use ONLY square brackets for labels: `id1[Label]`. "
+            "3) NEVER use double quotes (\") anywhere in the Mermaid block. If you need a quote, use a single quote ('). "
+            "4) Sanitize label text: remove or replace characters like `(`, `)`, `[`, `]` if they appear inside the label. "
+            "5) Do not use complex styling or colors."
             "Do not include any other fenced code blocks."
         )
     )
