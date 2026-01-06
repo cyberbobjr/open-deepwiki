@@ -399,8 +399,8 @@ class DocumentationSiteGenerator:
                 "You are generating DeepWiki-style feature documentation. "
                 "Use ONLY the provided file summaries. Return clean Markdown. "
                 "Do not include fenced code blocks, EXCEPT when using Mermaid diagrams. "
-                "If a diagram materially improves understanding, you MAY include at most ONE fenced Mermaid block "
-                "using this exact format: ```mermaid\n...\n``` . "
+                "You MUST include at least one Mermaid SEQUENCE diagram and at least one Mermaid CLASS diagram "
+                "to explain the logic and structure. Use the exact format: ```mermaid\n...\n``` . "
                 "Do not include any other code fences (no ```java, ```python, etc)."
             )
         )
@@ -412,8 +412,9 @@ class DocumentationSiteGenerator:
                 "1) High-Level Concept (what purpose this feature serves)\n"
                 "2) Implementation Details (how the files collaborate)\n"
                 "3) Key Classes/Methods (mention specific elements from the summaries)\n\n"
-                "Optional (only if it helps):\n"
-                "- Include ONE or more Mermaid diagrams to explain flow or relationships (sequence/flowchart/class).\n"
+                "Diagram Requirements:\n"
+                "- Include at least ONE Mermaid sequence diagram explaining the main flow.\n"
+                "- Include at least ONE Mermaid class diagram explaining the relationships.\n"
                 "- Keep it simple (< 30 lines), no styling, no colors.\n"
                 "- CRITICAL: NEVER use double quotes (\") anywhere in the Mermaid block. Use single quotes (') if needed.\n"
                 "- CRITICAL: NEVER use forward slashes (/) anywhere in the Mermaid block. Use backslashes (\\) instead.\n"

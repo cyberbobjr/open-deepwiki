@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-import os
 import json
+import os
+import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-import uuid
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.callbacks.base import BaseCallbackHandler
@@ -14,19 +14,14 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 from core.rag.retriever import GraphEnrichedRetriever
 from router.common import get_scoped_retriever, normalize_project
-from router.schemas import (
-    AskRequest,
-    AskResponse,
-    DeleteConversationResponse,
-    DeleteConversationRequest,
-    ConversationHistoryMessage,
-    GetConversationHistoryRequest,
-    GetConversationHistoryResponse,
-    ListConversationsResponse,
-    ListConversationsRequest,
-    QueryResult,
-)
-
+from router.schemas import (AskRequest, AskResponse,
+                            ConversationHistoryMessage,
+                            DeleteConversationRequest,
+                            DeleteConversationResponse,
+                            GetConversationHistoryRequest,
+                            GetConversationHistoryResponse,
+                            ListConversationsRequest,
+                            ListConversationsResponse, QueryResult)
 
 router = APIRouter()
 
@@ -62,7 +57,8 @@ def _message_role_and_content(message: Any) -> tuple[str, str]:
     """
 
     try:
-        from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+        from langchain_core.messages import (AIMessage, BaseMessage,
+                                             HumanMessage, SystemMessage)
 
         if isinstance(message, HumanMessage):
             return ("user", _stringify_message_content(getattr(message, "content", "")))
@@ -240,9 +236,24 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
             label = meta.get("doc_relpath") or meta.get("doc_path") or "generated_markdown"
             context_blocks.append(f"### docs_markdown | {label}\n{md.page_content}")
 
+        # Third pass: retrieve project overview.
+        if vectorstore is not None:
+            where_ov = {
+                "$and": [
+                    {"project": normalized_project},
+                    {"doc_type": "project_overview"},
+                ]
+            }
+            try:
+                ov_docs = vectorstore.similarity_search(req.question, k=1, filter=where_ov)
+                for ov in ov_docs:
+                    context_blocks.insert(0, f"### project_overview\n{ov.page_content}")
+            except Exception:
+                pass
+
         from utils.agent_factory import create_codebase_agent
-        from utils.sqlite_checkpointer import SqliteCheckpointSaver
         from utils.chat import create_chat_model
+        from utils.sqlite_checkpointer import SqliteCheckpointSaver
 
         session_id = req.session_id or uuid.uuid4().hex
 
@@ -257,13 +268,22 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
 
         system_prompt = (
             "You are a senior engineer assistant for a Java codebase. "
-            "Prefer answering using the provided Context section. "
-            "If the context is insufficient, you MAY use tools to inspect the codebase (browse_dir/get_file_contents/vector_search) "
-            "to gather missing details. "
-            "Conversation history is for continuity only. "
-            "If you still cannot answer, say what you need next. "
-            "Keep the answer concise and actionable."
+            "Your goal is to provide SYNTHETIC, CONCISE, and well-formatted answers based on the provided Context.\n\n"
+            "Formatting Rules:\n"
+            "- Use proper Markdown hierarchy (H1 for main titles if applicable, H2/H3 for sections).\n"
+            "- Use bullet points and numbered lists for readability.\n"
+            "- Use Markdown tables for structured data or comparison (e.g., between classes or methods).\n"
+            "- Use bold and italics to highlight key architectural components or logic.\n"
+            "- Use fenced code blocks with language identifiers (e.g., ```java) only for MUST-HAVE snippets.\n\n"
+            "Interaction Rules:\n"
+            "- NEVER repeat the context verbatim. Summarize it.\n"
+            "- If the context is insufficient, use tools (browse_dir/get_file_contents) to find proof.\n"
+            "- If you cannot answer, say so briefly.\n"
+            "- Avoid long-winded explanations unless explicitly asked.\n"
+            "- Answer in the user's language (default: French if the query is in French)."
         )
+        if getattr(config, "custom_system_prompt", None):
+            system_prompt += "\n\n" + config.custom_system_prompt
 
         user_prompt = "\n\n".join(
             [
@@ -310,7 +330,10 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
                     pass
 
         handler = _QueueTokenHandler()
-        llm = create_chat_model(streaming=True, callbacks=[handler])
+        llm = create_chat_model(
+            streaming=True,
+            callbacks=[handler]
+        )
 
         graph_path = str(getattr(config, "project_graph_sqlite_path", "./project_graph.sqlite3") or "./project_graph.sqlite3")
         agent = create_codebase_agent(
@@ -664,18 +687,43 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
         label = meta.get("doc_relpath") or meta.get("doc_path") or "generated_markdown"
         context_blocks.append(f"### docs_markdown | {label}\n{md.page_content}")
 
+    # Third pass: retrieve project overview.
+    if vectorstore is not None:
+        where_ov = {
+            "$and": [
+                {"project": project},
+                {"doc_type": "project_overview"},
+            ]
+        }
+        try:
+            ov_docs = vectorstore.similarity_search(req.question, k=1, filter=where_ov)
+            for ov in ov_docs:
+                context_blocks.insert(0, f"### project_overview\n{ov.page_content}")
+        except Exception:
+            pass
+
     from utils.agent_factory import create_codebase_agent
     from utils.sqlite_checkpointer import SqliteCheckpointSaver
 
     system_prompt = (
         "You are a senior engineer assistant for a Java codebase. "
-        "Prefer answering using the provided Context section. "
-        "If the context is insufficient, you MAY use tools to inspect the codebase (browse_dir/get_file_contents/vector_search) "
-        "to gather missing details. "
-        "Conversation history is for continuity only. "
-        "If you still cannot answer, say what you need next. "
-        "Keep the answer concise and actionable."
+        "Your goal is to provide SYNTHETIC, CONCISE, and well-formatted answers based on the provided Context.\n\n"
+        "Formatting Rules:\n"
+        "- Use proper Markdown hierarchy (H1 for main titles if applicable, H2/H3 for sections).\n"
+        "- Use bullet points and numbered lists for readability.\n"
+        "- Use Markdown tables for structured data or comparison (e.g., between classes or methods).\n"
+        "- Use bold and italics to highlight key architectural components or logic.\n"
+        "- Use fenced code blocks with language identifiers (e.g., ```java) only for MUST-HAVE snippets.\n\n"
+        "Interaction Rules:\n"
+        "- NEVER repeat the context verbatim. Summarize it.\n"
+        "- If the context is insufficient, use tools (browse_dir/get_file_contents) to find proof.\n"
+        "- If you cannot answer, say so briefly.\n"
+        "- Avoid long-winded explanations unless explicitly asked.\n"
+        "- Answer in the user's language (default: French if the query is in French)."
     )
+    if getattr(config, "custom_system_prompt", None) or os.getenv("OPEN_DEEPWIKI_CUSTOM_SYSTEM_PROMPT"):
+        custom = getattr(config, "custom_system_prompt", None) or os.getenv("OPEN_DEEPWIKI_CUSTOM_SYSTEM_PROMPT")
+        system_prompt += "\n\n" + str(custom)
     user_prompt = "\n\n".join(
         [
             f"Question:\n{req.question}",
@@ -718,6 +766,7 @@ def ask(request: Request, req: AskRequest) -> AskResponse:
             root_dir=code_root_key,
             retriever=retriever,
             checkpointer=checkpointer,
+            llm=create_chat_model(),
             project_graph_sqlite_path=graph_path,
             default_project=project or None,
             debug=(str(getattr(config, "debug_level", "")).upper() == "DEBUG"),

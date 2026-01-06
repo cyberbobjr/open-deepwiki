@@ -35,9 +35,9 @@ def create_codebase_agent(
     from langchain.agents import create_agent
     from langchain_core.tools import tool
 
+    from core.project_graph import SqliteProjectGraphStore
     from utils.chat import create_chat_model
     from utils.codebase_tools import make_codebase_tools
-    from core.project_graph import SqliteProjectGraphStore
 
     resolved_root = str(Path(root_dir).expanduser().resolve())
     tools = list(make_codebase_tools(root_dir=resolved_root))
@@ -136,10 +136,17 @@ def create_codebase_agent(
 
     prompt = system_prompt or (
         "You are a senior engineer assistant for a Java codebase. "
-        "You may use tools to inspect the codebase when necessary. "
-        "Prefer answering from the provided Context first. "
-        "When you read files, cite the relevant snippet in your answer. "
-        "Be concise and actionable."
+        "Your goal is to provide SYNTHETIC, CONCISE, and well-formatted answers based on the provided Context.\n\n"
+        "Formatting Rules:\n"
+        "- Use proper Markdown hierarchy (H1 for main titles, H2/H3 for sections).\n"
+        "- Use bullet points and numbered lists for readability.\n"
+        "- Use Markdown tables for structured data or comparison.\n"
+        "- Use bold and italics to highlight key architectural components.\n"
+        "- Use fenced code blocks with language identifiers only for must-have snippets.\n\n"
+        "Interaction Rules:\n"
+        "- NEVER repeat the context verbatim. Summarize it.\n"
+        "- Use tools (browse_dir/get_file_contents) if context is insufficient.\n"
+        "- Be brief and actionable."
     )
 
     return create_agent(

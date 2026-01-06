@@ -26,6 +26,10 @@ java_codebase_dir: ./fixtures
 # omit the `project` parameter to use this default.
 project_name: null
 
+# Optional: custom system prompt extension that will be appended to the default system prompt.
+# Use this to add specific rules or context to the assistant (e.g. language preferences).
+custom_system_prompt: null
+
 # Documentation site output
 # Base directory where generated documentation artifacts are written.
 # The /index-directory endpoint will write:

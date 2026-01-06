@@ -18,6 +18,10 @@ class AppConfig(BaseModel):
     # When set, all indexed documents get metadata.project=<project_name>.
     project_name: Optional[str] = None
 
+    # Optional custom system prompt extension.
+    # When set, this string is appended to the default system prompt.
+    custom_system_prompt: Optional[str] = None
+
     # FastAPI / Uvicorn
     api_port: int = 8000
 
