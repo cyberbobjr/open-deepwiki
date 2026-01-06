@@ -16,6 +16,7 @@ from config import AppConfig
 from core.documentation.feature_extractor import (generate_module_summary,
                                                   generate_project_overview)
 from core.documentation.site_generator import write_feature_docs_site
+from core.parsing.generic_parser import GenericAppParser
 from core.parsing.java_parser import JavaParser
 from core.parsing.tree_sitter_setup import setup_java_language
 from core.project_graph import SqliteProjectGraphStore
@@ -24,7 +25,7 @@ from core.rag.indexing import (index_generated_markdown_docs,
                                index_project_overview)
 from core.rag.retriever import GraphEnrichedRetriever
 # Internal imports
-from indexer import scan_java_methods
+from indexer import scan_java_methods, scan_resource_files
 from utils.vectorstore import (_get_vectorstore, _load_method_docs_map,
                                delete_scoped_documents)
 
@@ -219,6 +220,39 @@ def run_index_directory_job(
                 for (proj, fpath), doc in summaries_map.items():
                     file_summaries_by_path[str(fpath)] = doc.page_content
 
+            # --- Generic Resource Indexing (YAML, JSON, etc.) ---
+            indexed_resources = 0
+            if getattr(config, "index_resources", True):
+                resource_parser = GenericAppParser()
+                # Get configured extensions and chunk size
+                extensions = getattr(config, "resource_extensions", []) or [
+                    ".yaml", ".yml", ".json", ".xml", ".properties", ".txt", ".md"
+                ]
+                chunk_size = int(getattr(config, "resource_chunk_size", 1000) or 1000)
+                
+                resource_docs = scan_resource_files(
+                    codebase_dir=str(directory),
+                    extensions=extensions,
+                    parser=resource_parser,
+                    chunk_size=chunk_size,
+                    progress_callback=None,  # Or hook into existing progress?
+                )
+                
+                if resource_docs:
+                    # Enrich metadata with project context
+                    for doc in resource_docs:
+                        doc.metadata["project"] = project
+                        doc.metadata["type"] = "resource"
+                        doc.metadata["indexed_at"] = indexed_at
+                        # Ensure language is set (use extension without dot)
+                        ext = doc.metadata.get("extension", "")
+                        doc.metadata["language"] = ext.lstrip(".") if ext else "text"
+
+                    # Add to vectorstore
+                    # Note: we might need to batch this if very large, but Chroma/LangChain handle batching usually.
+                    vectorstore.add_documents(resource_docs)
+                    indexed_resources = len(resource_docs)
+                    
             # --- Semantic Documentation Generation (Features, Modules, Overview) ---
             # This step uses an LLM to "understand" the codebase and generate higher-level docs.
             semantic_overview: Optional[str] = None
@@ -357,6 +391,7 @@ def run_index_directory_job(
             if isinstance(statuses, dict) and isinstance(statuses.get(project), dict):
                 statuses[project]["indexed_methods"] = len(indexed_map)
                 statuses[project]["indexed_file_summaries"] = int(indexed_summaries)
+                statuses[project]["indexed_resources"] = int(indexed_resources)
 
                 statuses[project]["loaded_method_docs"] = len(method_docs_map)
                 statuses[project]["indexed_at"] = indexed_at

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 DEFAULT_CONFIG_PATH = "open-deepwiki.yaml"
 
@@ -48,6 +48,16 @@ class AppConfig(BaseModel):
     # If true, indexing can add one extra "file summary" document per Java file.
     # This summary is heuristic (no LLM required) and is meant to help RAG.
     index_file_summaries: bool = True
+
+    # Generic Resource Indexing
+    # If true, non-Java files (YAML, JSON, etc.) will be indexed as generic text.
+    index_resources: bool = True
+    # List of extensions to treat as resources.
+    resource_extensions: List[str] = Field(
+        default_factory=lambda: [".yaml", ".yml", ".json", ".xml", ".properties", ".txt", ".md"]
+    )
+    # Token limit for chunking resource files.
+    resource_chunk_size: int = 1000
 
 
 
