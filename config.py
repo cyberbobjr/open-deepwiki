@@ -47,7 +47,7 @@ class AppConfig(BaseModel):
     # Indexing (optional)
     # If true, indexing can add one extra "file summary" document per Java file.
     # This summary is heuristic (no LLM required) and is meant to help RAG.
-    index_file_summaries: bool = False
+    index_file_summaries: bool = True
 
 
 

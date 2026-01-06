@@ -208,13 +208,16 @@ def run_index_directory_job(
 
             file_summaries_by_path: Dict[str, str] = {}
             if include_file_summaries:
-                indexed_summaries, file_summaries_by_path = index_java_file_summaries(
-                    directory=str(directory),
-                    project=project,
+                # Call the function with correct arguments (methods list)
+                summaries_map = index_java_file_summaries(
+                    methods=methods,
                     vectorstore=vectorstore,
-                    parser=parser,
-                    indexed_at=indexed_at,
                 )
+                indexed_summaries = len(summaries_map)
+                
+                # Convert Dict[(project, path), Document] to Dict[path, content]
+                for (proj, fpath), doc in summaries_map.items():
+                    file_summaries_by_path[str(fpath)] = doc.page_content
 
             # --- Semantic Documentation Generation (Features, Modules, Overview) ---
             # This step uses an LLM to "understand" the codebase and generate higher-level docs.
