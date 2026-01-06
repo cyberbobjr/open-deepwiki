@@ -416,6 +416,7 @@ class DocumentationSiteGenerator:
                 "- Include ONE or more Mermaid diagrams to explain flow or relationships (sequence/flowchart/class).\n"
                 "- Keep it simple (< 30 lines), no styling, no colors.\n"
                 "- CRITICAL: NEVER use double quotes (\") anywhere in the Mermaid block. Use single quotes (') if needed.\n"
+                "- CRITICAL: NEVER use forward slashes (/) anywhere in the Mermaid block. Use backslashes (\\) instead.\n"
                 "- CRITICAL: Use ONLY square brackets for labels: `id1[Label Script]`. NO internal `[` or `]`.\n"
                 "- CRITICAL: Ensure node IDs are alphanumeric only (e.g. id1, id2), no brackets/parentheses.\n\n"
                 f"Feature: {name}\n\n"
