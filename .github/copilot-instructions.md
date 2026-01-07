@@ -32,7 +32,7 @@ This repo evolved from a demo script into a production-ready application with an
 
 ### Code Style
 
-- Don't add comments unless they match the style of other comments in the file or are necessary to explain complex changes.
+- Add comments when they provide value and match the existing code style, focusing on explaining complex logic or non-obvious decisions.
 - Use existing libraries whenever possible, and only add new libraries or update library versions if absolutely necessary.
 - Follow Python best practices and idiomatic patterns.
 
