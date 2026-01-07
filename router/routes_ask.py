@@ -341,6 +341,8 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
 
         normalized_project = normalize_project(req.project)
         session_id = req.session_id or uuid.uuid4().hex
+        config = getattr(request.app.state, "config", None)
+        retriever = get_scoped_retriever(request, project=normalized_project)
 
         # 1. Fetch History & Condense Query
         checkpointer = _get_checkpointer(request)
@@ -393,7 +395,7 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
             ]
         )
 
-        config = getattr(request.app.state, "config", None)
+        # config already defined above
         code_root = getattr(config, "java_codebase_dir", "./") or "./"
         code_root_key = str(Path(code_root).expanduser().resolve())
 
@@ -719,6 +721,8 @@ async def ask(request: Request, req: AskRequest) -> AskResponse:
 
     project = normalize_project(req.project)
     session_id = req.session_id or uuid.uuid4().hex
+    config = getattr(request.app.state, "config", None)
+    retriever = get_scoped_retriever(request, project=project)
 
     # 1. Fetch History & Condense Query
     checkpointer = _get_checkpointer(request)
@@ -726,7 +730,7 @@ async def ask(request: Request, req: AskRequest) -> AskResponse:
     standalone_query = await _condense_query(req.question, history)
 
     # 2. Retrieval & Deduplication
-    history_text_for_dedup = _get_history_text(history, max_tokens=5000).lower()
+    history_text_for_dedup = _get_history_text(history, max_content_length=5000).lower()
     docs, context_results, context_blocks = await _retrieve_context(
         request, project, standalone_query, req.k, history_text_for_dedup
     )
@@ -766,9 +770,6 @@ async def ask(request: Request, req: AskRequest) -> AskResponse:
     if not hasattr(request.app.state, "checkpointers"):
         request.app.state.checkpointers = {}
 
-    session_id = req.session_id or uuid.uuid4().hex
-
-    config = getattr(request.app.state, "config", None)
     code_root = getattr(config, "java_codebase_dir", "./") or "./"
     code_root_key = str(Path(code_root).expanduser().resolve())
 
