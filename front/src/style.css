@@ -20,7 +20,6 @@ button:disabled {
 
 /* Minimal Markdown formatting for chat messages */
 .chat-markdown {
-  padding-top: 1rem;
   white-space: normal;
   word-break: break-word;
   @apply text-sm leading-relaxed text-slate-900;

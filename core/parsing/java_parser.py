@@ -67,20 +67,23 @@ class JavaParser:
 
         captures = query.captures(tree.root_node)
 
-        package_name = self._extract_package_name(tree.root_node, java_code)
+        # Convert to bytes once for all subsequent operations
+        code_bytes = bytes(java_code, "utf8")
+        package_name = self._extract_package_name(tree.root_node, code_bytes)
 
         for node, capture_name in captures:
             method_type = "method" if capture_name == "method" else "constructor"
-            signature = self._extract_signature(node, java_code)
-            code = java_code[node.start_byte : node.end_byte]
-            calls = self._extract_calls(node, java_code)
-            javadoc = self._extract_javadoc(node, java_code)
+            
+            signature = self._extract_signature(node, code_bytes)
+            code = code_bytes[node.start_byte : node.end_byte].decode("utf8")
+            calls = self._extract_calls(node, code_bytes)
+            javadoc = self._extract_javadoc(node, code_bytes)
 
             # tree-sitter exposes 0-based (row, column) points.
             start_line = int(getattr(node, "start_point", (0, 0))[0]) + 1
             end_line = int(getattr(node, "end_point", (0, 0))[0]) + 1
 
-            enclosing_type = self._extract_enclosing_type_name(node, java_code)
+            enclosing_type = self._extract_enclosing_type_name(node, code_bytes)
             method_id = self._generate_id(
                 signature,
                 package_name=package_name,
@@ -105,16 +108,16 @@ class JavaParser:
 
         return methods
 
-    def _extract_signature(self, node, code: str) -> str:
+    def _extract_signature(self, node, code: bytes) -> str:
         signature_parts: List[str] = []
 
         for child in node.children:
             if child.type in ["modifiers", "type_identifier", "void_type", "generic_type"]:
-                signature_parts.append(code[child.start_byte : child.end_byte])
+                signature_parts.append(code[child.start_byte : child.end_byte].decode("utf8"))
             elif child.type == "identifier":
-                signature_parts.append(code[child.start_byte : child.end_byte])
+                signature_parts.append(code[child.start_byte : child.end_byte].decode("utf8"))
             elif child.type == "formal_parameters":
-                signature_parts.append(code[child.start_byte : child.end_byte])
+                signature_parts.append(code[child.start_byte : child.end_byte].decode("utf8"))
 
         return " ".join(signature_parts).strip()
 
@@ -172,12 +175,12 @@ class JavaParser:
         cleaned = re.sub(r"_+", "_", cleaned).strip("_")
         return cleaned.lower()
 
-    def _extract_package_name(self, root_node, code: str) -> Optional[str]:
+    def _extract_package_name(self, root_node, code: bytes) -> Optional[str]:
         """Extract the package name for a compilation unit, if present.
 
         Args:
             root_node: Tree-sitter root node.
-            code: Full Java source text.
+            code: Full Java source bytes.
 
         Returns:
             Package name like "com.example" or None if absent.
@@ -192,19 +195,19 @@ class JavaParser:
             )
             captures = query.captures(root_node)
             for node, _ in captures:
-                name = code[node.start_byte : node.end_byte].strip()
+                name = code[node.start_byte : node.end_byte].decode("utf8").strip()
                 if name:
                     return name
         except Exception:
             return None
         return None
 
-    def _extract_enclosing_type_name(self, node, code: str) -> Optional[str]:
+    def _extract_enclosing_type_name(self, node, code: bytes) -> Optional[str]:
         """Find the closest enclosing type name (class/interface/enum/record).
 
         Args:
             node: Tree-sitter node for a method/constructor declaration.
-            code: Full Java source text.
+            code: Full Java source bytes.
 
         Returns:
             Enclosing type name (e.g., "MyService") or None.
@@ -222,12 +225,12 @@ class JavaParser:
                 # Most declarations include the simple name as an `identifier` child.
                 for child in getattr(current, "children", []) or []:
                     if child.type == "identifier":
-                        name = code[child.start_byte : child.end_byte].strip()
+                        name = code[child.start_byte : child.end_byte].decode("utf8").strip()
                         return name or None
             current = getattr(current, "parent", None)
         return None
 
-    def _extract_calls(self, node, code: str) -> List[str]:
+    def _extract_calls(self, node, code: bytes) -> List[str]:
         calls: List[str] = []
 
         query = self.java_language.query(
@@ -240,12 +243,12 @@ class JavaParser:
         captures = query.captures(node)
 
         for call_node, _ in captures:
-            call_name = code[call_node.start_byte : call_node.end_byte]
+            call_name = code[call_node.start_byte : call_node.end_byte].decode("utf8")
             calls.append(call_name)
 
         return list(set(calls))
 
-    def _extract_javadoc(self, node, code: str) -> Optional[str]:
+    def _extract_javadoc(self, node, code: bytes) -> Optional[str]:
         parent = node.parent
         if not parent:
             return None
@@ -263,12 +266,12 @@ class JavaParser:
         if node_index is not None and node_index > 0:
             prev_sibling = parent.children[node_index - 1]
             if prev_sibling.type == "block_comment":
-                comment_text = code[prev_sibling.start_byte : prev_sibling.end_byte]
+                comment_text = code[prev_sibling.start_byte : prev_sibling.end_byte].decode("utf8")
                 if comment_text.startswith("/**"):
                     return comment_text
 
         lookback_start = max(0, node.start_byte - 4000)
-        prefix = code[lookback_start : node.start_byte]
+        prefix = code[lookback_start : node.start_byte].decode("utf8", errors="ignore")
         match = re.search(r"(/\*\*[\s\S]*?\*/)[\s]*\Z", prefix)
         if match:
             return match.group(1)

@@ -11,10 +11,7 @@ api_port: 8000
 # If false, no CORS middleware is installed.
 cors_enabled: false
 
-# JavaDoc generation
-# If an existing JavaDoc has fewer meaningful content lines than this value,
-# it will be replaced ("improved").
-javadoc_min_meaningful_lines: 3
+
 
 # Chroma
 # Disable anonymized telemetry (see https://docs.trychroma.com/telemetry)
@@ -28,6 +25,10 @@ java_codebase_dir: ./fixtures
 # When set, indexed docs include metadata.project=<project_name> and API calls can
 # omit the `project` parameter to use this default.
 project_name: null
+
+# Optional: custom system prompt extension that will be appended to the default system prompt.
+# Use this to add specific rules or context to the assistant (e.g. language preferences).
+custom_system_prompt: null
 
 # Documentation site output
 # Base directory where generated documentation artifacts are written.
@@ -43,6 +44,17 @@ docs_feature_batch_size: 10
 # Optional: index one heuristic summary document per Java file.
 # Helps RAG answer file-level questions without reading every method.
 index_file_summaries: false
+
+# Optional: index non-Java resources (YAML, JSON, properties, text)
+# Files matching these extensions will be chunked and indexed as generic text documents.
+index_resources: true
+resource_extensions: [".yaml", ".yml", ".json", ".xml", ".properties", ".txt", ".md"]
+# Token limit for chunks of generic resource files (default 1000)
+resource_chunk_size: 1000
+
+
+
+
 
 # Optional: exclude test-related Java sources during indexing.
 # If true (default), files located under a directory named "test" (case-insensitive)

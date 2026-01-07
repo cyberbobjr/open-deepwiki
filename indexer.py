@@ -9,12 +9,12 @@ from typing import Callable, Iterable, List, Optional, Protocol
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
 
-from config import AppConfig, apply_config_to_env, configure_logging, load_config, prefetch_tiktoken_encodings
+from config import (AppConfig, apply_config_to_env, configure_logging,
+                    load_config, prefetch_tiktoken_encodings)
 from core.parsing.java_parser import JavaMethod, JavaParser
+from core.parsing.tree_sitter_setup import setup_java_language
 from core.rag.embeddings import create_embeddings
 from core.rag.indexing import index_java_file_summaries, index_java_methods
-from core.parsing.tree_sitter_setup import setup_java_language
-
 
 logger = logging.getLogger(__name__)
 
@@ -140,6 +140,31 @@ def iter_java_files(root_dir: str, *, exclude_tests: bool = True) -> Iterable[Pa
             yield path
 
 
+def iter_resource_files(root_dir: str, extensions: List[str], exclude: Optional[List[str]] = None) -> Iterable[Path]:
+    """Yield non-Java resource files under a directory.
+    
+    Args:
+        root_dir: Root directory to scan.
+        extensions: List of extensions to include (e.g. ['.yaml', '.json']).
+        exclude: List of directory names to exclude (defaults to standard ignored dirs).
+    """
+    root = Path(root_dir)
+    if not root.exists():
+        return []
+
+    exclude_dirs = {".git", ".venv", "venv", "build", "vendor", "chroma_db", "__pycache__", "target", "node_modules", "dist"}
+    if exclude:
+        exclude_dirs.update(exclude)
+
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in exclude_dirs]
+        
+        for filename in filenames:
+            path = Path(dirpath) / filename
+            if path.suffix.lower() in extensions:
+                 yield path
+
+
 def scan_java_methods(
     codebase_dir: str,
     parser: JavaParserLike,
@@ -203,6 +228,54 @@ def scan_java_methods(
         progress_callback(processed_files, total_files, "")
 
     return methods
+
+
+def scan_resource_files(
+    codebase_dir: str,
+    extensions: List[str],
+    parser: "GenericAppParser",
+    chunk_size: int = 1000,
+    progress_callback: Optional[Callable[[int, int, Optional[str]], None]] = None,
+) -> List:
+    """Scan a directory for resource files and parse them into Documents.
+    
+    Args:
+        codebase_dir: Root to scan.
+        extensions: List of extensions to include.
+        parser: Initialized GenericAppParser.
+        chunk_size: Token limit per chunk.
+        progress_callback: Optional progress callback.
+        
+    Returns:
+        List of LangChain Documents.
+    """
+    from langchain_core.documents import Document
+    
+    docs: List[Document] = []
+    
+    files = list(iter_resource_files(codebase_dir, extensions))
+    total_files = len(files)
+    logger.info("Scanning %d resource files under %s", total_files, codebase_dir)
+    
+    processed_files = 0
+    if progress_callback:
+        progress_callback(0, total_files, None)
+        
+    for path in files:
+        try:
+            file_docs = parser.parse_file(path, chunk_size=chunk_size)
+            docs.extend(file_docs)
+        except Exception as e:
+            logger.warning("Failed to parse resource %s: %s", path, e)
+            
+        processed_files += 1
+        if progress_callback:
+            progress_callback(processed_files, total_files, str(path))
+            
+    if progress_callback:
+        progress_callback(processed_files, total_files, "")
+        
+    return docs
 
 
 def _get_vectorstore() -> Chroma:

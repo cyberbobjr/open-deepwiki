@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import yaml
-from pydantic import BaseModel
-
+from pydantic import BaseModel, Field
 
 DEFAULT_CONFIG_PATH = "open-deepwiki.yaml"
 
@@ -19,6 +18,10 @@ class AppConfig(BaseModel):
     # When set, all indexed documents get metadata.project=<project_name>.
     project_name: Optional[str] = None
 
+    # Optional custom system prompt extension.
+    # When set, this string is appended to the default system prompt.
+    custom_system_prompt: Optional[str] = None
+
     # FastAPI / Uvicorn
     api_port: int = 8000
 
@@ -26,11 +29,6 @@ class AppConfig(BaseModel):
     # If True, enables permissive CORS headers for browser clients (dev-friendly).
     # When False, no CORS middleware is installed.
     cors_enabled: bool = False
-
-    # JavaDoc generation
-    # Existing JavaDoc blocks with fewer than this number of "meaningful" content lines
-    # will be regenerated (replaced). See core/documentation/javadoc_generator.py.
-    javadoc_min_meaningful_lines: int = 3
 
     # Documentation site output
     # Base directory where generated docs artifacts are written.
@@ -41,6 +39,10 @@ class AppConfig(BaseModel):
     # Number of file summaries to classify per LLM call when building feature pages.
     docs_feature_batch_size: int = 10
 
+
+
+
+
     # Chroma
     # Chroma enables anonymized telemetry by default; set this to False to opt out.
     # This maps to the `ANONYMIZED_TELEMETRY` environment variable.
@@ -49,7 +51,19 @@ class AppConfig(BaseModel):
     # Indexing (optional)
     # If true, indexing can add one extra "file summary" document per Java file.
     # This summary is heuristic (no LLM required) and is meant to help RAG.
-    index_file_summaries: bool = False
+    index_file_summaries: bool = True
+
+    # Generic Resource Indexing
+    # If true, non-Java files (YAML, JSON, etc.) will be indexed as generic text.
+    index_resources: bool = True
+    # List of extensions to treat as resources.
+    resource_extensions: List[str] = Field(
+        default_factory=lambda: [".yaml", ".yml", ".json", ".xml", ".properties", ".txt", ".md"]
+    )
+    # Token limit for chunking resource files.
+    resource_chunk_size: int = 1000
+
+
 
     # Indexing: exclude test files
     # If true (default), indexing skips Java sources located under a directory

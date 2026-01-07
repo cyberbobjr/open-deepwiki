@@ -14,6 +14,7 @@ python3 -m venv venv
 ```
 
 Tip (to avoid conda/global issues):
+
 - If you don’t activate the venv, prefix commands with `./venv/bin/python`.
 
 Set up environment variables (required for indexing/query/ask):
@@ -70,6 +71,8 @@ project_name: my-project
 # Optional: index one heuristic summary document per Java file (helps file-level RAG)
 index_file_summaries: true
 
+
+
 # Optional: persist /ask conversation state via checkpointer
 # The API uses this to keep agent memory across requests (keyed by session_id).
 checkpointer_backend: sqlite
@@ -122,6 +125,7 @@ Indexes all `.java` files under the configured directory (`java_codebase_dir`) a
 ```
 
 Useful variables:
+
 - `CHROMA_PERSIST_DIR` (default `./chroma_db`)
 - `CHROMA_COLLECTION` (default `java_methods`)
 - `OPEN_DEEPWIKI_CONFIG` (path to the YAML)
@@ -137,6 +141,7 @@ Useful variables:
 ```
 
 Endpoints :
+
 - `GET /api/v1/health`
 - `GET /api/v1/projects` (list indexed project scopes)
 - `GET /api/v1/projects/details` (projects + last known indexed path/timestamp)
@@ -153,13 +158,6 @@ Endpoints :
 - `POST /api/v1/sessions` with `{ "project": "..." }` (list chat sessions)
 - `POST /api/v1/sessions/delete` with `{ "project": "...", "session_id": "..." }`
 
-- `POST /api/v1/project-overview` with `{ "project": "..." }`
-- `POST /api/v1/project-docs-index` with `{ "project": "..." }`
-- `GET /api/v1/projects/{project}/docs/{doc_path}` (serve generated markdown)
-
-- `POST /api/v1/generate-javadoc` and related job endpoints
-- `GET /api/v1/postimplementation-logs` (read JavaDoc generation logs)
-
 Implementation: routes are in `router/api.py` (mounted by `app.py`).
 
 Utilities: Chroma vectorstore creation and method doc loading are in `utils/vectorstore.py`.
@@ -171,7 +169,6 @@ curl -X POST http://127.0.0.1:8000/api/v1/query \
     -H 'Content-Type: application/json' \
     -d '{"query":"create user","k":4,"project":"my-project"}'
 ```
-
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/ask \
@@ -213,6 +210,7 @@ curl 'http://127.0.0.1:8000/api/v1/index-status?project=my-project'
 ```
 
 Notes :
+
 - `path` can be absolute or relative (resolved from the server working directory).
 - Requires `OPENAI_API_KEY` (embeddings). If missing: HTTP 503.
 
@@ -251,6 +249,7 @@ for method in methods:
 ### 2. GraphEnrichedRetriever - Dependency-Aware Retrieval
 
 The retriever performs two steps:
+
 1. Vector search to find relevant methods
 2. Fetch documentation for called methods (dependencies)
 
@@ -479,6 +478,7 @@ The script will automatically clone tree-sitter-java on first run.
 ### OpenAI API errors
 
 If you're using a custom endpoint, ensure:
+
 1. You set explicit base URLs (no implicit fallback):
     - `OPENAI_EMBEDDING_API_BASE`
     - `OPENAI_CHAT_API_BASE`
