@@ -8,13 +8,10 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlmodel import Session, select
 
 from config import (AppConfig, apply_config_to_env, configure_logging,
                     load_config, prefetch_tiktoken_encodings)
-from core.database import create_db_and_tables, get_session
-from core.models.user import User
-from core.security import get_password_hash
+from core.database import create_db_and_tables
 from router.api import router as api_router
 from router.auth import router as auth_router
 from router.groups import router as groups_router
