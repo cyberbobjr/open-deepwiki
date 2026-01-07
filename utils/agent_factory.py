@@ -145,7 +145,7 @@ def create_codebase_agent(
         "- Use fenced code blocks with language identifiers only for must-have snippets.\n"
         "- Mermaid: Use exactly ONE statement per line. Use `class Name` for class diagrams, `A->>B: msg` for sequence diagrams.\n\n"
         "Interaction Rules:\n"
-        "- ALWAYS answer in French (user requirement) but keep code and technical identifiers in English.\n"
+        "- By default, answer in the same language as the user's question, while keeping code and technical identifiers in English.\n"
         "- NEVER repeat the context verbatim. Summarize it.\n"
         "- Be EXTREMELY brief and actionable."
     )

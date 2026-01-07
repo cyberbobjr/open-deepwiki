@@ -227,16 +227,13 @@ def scan_java_methods(
     if progress_callback is not None:
         progress_callback(processed_files, total_files, "")
 
-    if progress_callback is not None:
-        progress_callback(processed_files, total_files, "")
-
     return methods
 
 
 def scan_resource_files(
     codebase_dir: str,
     extensions: List[str],
-    parser,
+    parser: "GenericAppParser",
     chunk_size: int = 1000,
     progress_callback: Optional[Callable[[int, int, Optional[str]], None]] = None,
 ) -> List:

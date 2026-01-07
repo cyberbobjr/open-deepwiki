@@ -135,7 +135,7 @@ def _extract_history_messages(channel_values: dict[str, Any]) -> list[Any]:
 def _get_history_text(messages: list[Any], max_content_length: int = 500) -> str:
     """Format history messages into a concise string for LLM/dedup processing."""
     lines = []
-    for m in messages[-10:]: # Last 10 messages
+    for m in messages[-10:]:  # Last 10 messages
         role, content = _message_role_and_content(m)
         if role in ("user", "assistant"):
             lines.append(f"{role.upper()}: {content[:max_content_length]}")
@@ -299,6 +299,8 @@ async def _retrieve_context(
                     continue
                 context_blocks.insert(0, f"### project_overview\n{ov.page_content}")
         except Exception:
+            # Silently ignore if project overview retrieval fails
+            # Continue with other context blocks
             pass
 
     res = (docs, context_results, context_blocks)
@@ -379,7 +381,7 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
             "- Use fenced code blocks with language identifiers (e.g., ```java) only for MUST-HAVE snippets.\n"
             "- Mermaid: Use exactly ONE statement per line. Use `class Name` for class diagrams, `A->>B: msg` for sequence diagrams. No quotes unless necessary.\n\n"
             "Interaction Rules:\n"
-            "- ALWAYS answer in French (user requirement) but keep code and technical identifiers in English.\n"
+            "- By default, answer in the same language as the user's question, while keeping code and technical identifiers in English.\n"
             "- NEVER repeat the context verbatim. Summarize it.\n"
             "- If context is insufficient, use tools (browse_dir/get_file_contents) to find proof.\n"
             "- Avoid conversational filler. Be direct and actionable."
@@ -747,7 +749,7 @@ async def ask(request: Request, req: AskRequest) -> AskResponse:
         "- Use fenced code blocks with language identifiers (e.g., ```java) only for MUST-HAVE snippets.\n"
         "- Mermaid: Use exactly ONE statement per line. Use `class Name` for class diagrams, `A->>B: msg` for sequence diagrams. No quotes unless necessary.\n\n"
         "Interaction Rules:\n"
-        "- ALWAYS answer in French (user requirement) but keep code and technical identifiers in English.\n"
+        "- By default, answer in the same language as the user's question, while keeping code and technical identifiers in English.\n"
         "- NEVER repeat the context verbatim. Summarize it.\n"
         "- If context is insufficient, use tools (browse_dir/get_file_contents) to find proof.\n"
         "- Avoid conversational filler. Be direct and actionable."

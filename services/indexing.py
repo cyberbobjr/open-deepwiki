@@ -3,7 +3,6 @@ from __future__ import annotations
 import logging
 import os
 import threading
-import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -11,7 +10,6 @@ from typing import Any, Dict, List, Optional
 # External libraries
 from langchain_openai import ChatOpenAI
 
-from config import AppConfig
 # Documentation / RAG imports
 from core.documentation.feature_extractor import (generate_module_summary,
                                                   generate_project_overview)
@@ -129,8 +127,6 @@ def run_index_directory_job(
         directory: Absolute directory to scan.
         project: Normalized project scope name.
         indexed_at: ISO timestamp used for metadata.
-        reindex: Whether to delete existing scoped docs first.
-
         reindex: Whether to delete existing scoped docs first.
         include_file_summaries: Optional flag for indexing per-file summaries.
     """
@@ -278,7 +274,6 @@ def run_index_directory_job(
                 # If `file_summaries_by_path` is empty, this step might be weak.
                 # But we proceed.
 
-                module_summaries = {}
                 # Identify modules (folders with src/main/java or just top-level folders)
                 # For simplicity, we treat subdirectories of 'directory' as modules if they contain java files.
                 # This logic mimics the original behavior.

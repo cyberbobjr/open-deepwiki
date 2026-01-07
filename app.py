@@ -16,6 +16,17 @@ from utils.vectorstore import _get_vectorstore
 
 
 def create_app() -> FastAPI:
+    # Load config once for CORS middleware setup before app creation
+    load_dotenv(override=False)
+    config_path_env = os.getenv("OPEN_DEEPWIKI_CONFIG")
+    try:
+        early_config: AppConfig = load_config(config_path_env)
+    except Exception:
+        # If config loading fails (file not found, parse error, etc.),
+        # continue without CORS middleware. The app will retry loading
+        # during lifespan startup and report errors there if needed.
+        early_config = None
+
     @asynccontextmanager
     async def lifespan(fastapi_app: FastAPI):
         load_dotenv(override=False)
@@ -53,20 +64,14 @@ def create_app() -> FastAPI:
     fastapi_app = FastAPI(title="open-deepwiki", version="0.1.0", lifespan=lifespan)
 
     # CORS middleware must be added before the application starts.
-    try:
-        load_dotenv(override=False)
-        config_path = os.getenv("OPEN_DEEPWIKI_CONFIG")
-        config: AppConfig = load_config(config_path)
-        if bool(getattr(config, "cors_enabled", False)):
-            fastapi_app.add_middleware(
-                CORSMiddleware,
-                allow_origins=["*"],
-                allow_methods=["*"],
-                allow_headers=["*"],
-                allow_credentials=False,
-            )
-    except Exception:
-        pass
+    if early_config and bool(getattr(early_config, "cors_enabled", False)):
+        fastapi_app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+            allow_credentials=False,
+        )
 
     fastapi_app.include_router(api_router, prefix="/api/v1")
 

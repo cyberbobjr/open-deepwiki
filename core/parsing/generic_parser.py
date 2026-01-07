@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 # We try to import LangChain's splitter. 
 # If not available (though it should be), we fallback or error out.
