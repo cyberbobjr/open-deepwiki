@@ -1,0 +1,128 @@
+from typing import Annotated, List
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlmodel import Session, select
+
+from core.database import get_session
+from core.models.user import (Group, GroupCreate, GroupRead, GroupUpdate,
+                              Project, User, UserGroupLink)
+from core.security import get_current_admin_user
+
+router = APIRouter()
+
+@router.get("/", response_model=List[GroupRead])
+async def read_groups(
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
+    offset: int = 0,
+    limit: int = Query(default=100, le=100),
+):
+    groups = session.exec(select(Group).offset(offset).limit(limit)).all()
+    # SQLModel doesn't auto-fetch relationships for some reason in response unless accessed?
+    # Actually Pydantic v2 traversal should handle it if relationship is loaded.
+    # To be safe we might need to eager load or let lazy loading work if session is open.
+    return groups
+
+@router.get("/{group_id}", response_model=GroupRead)
+async def read_group(
+    group_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
+):
+    db_group = session.get(Group, group_id)
+    if not db_group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    return db_group
+
+
+@router.post("/", response_model=GroupRead)
+async def create_group(
+    group: GroupCreate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
+):
+    if session.exec(select(Group).where(Group.name == group.name)).first():
+        raise HTTPException(status_code=400, detail="Group already exists")
+    
+    db_group = Group.model_validate(group)
+    session.add(db_group)
+    session.commit()
+    session.refresh(db_group)
+    return db_group
+
+@router.put("/{group_id}", response_model=GroupRead)
+async def update_group(
+    group_id: int,
+    group_update: GroupUpdate,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
+):
+    db_group = session.get(Group, group_id)
+    if not db_group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    
+    if group_update.name:
+        db_group.name = group_update.name
+
+    if group_update.user_ids is not None:
+        # Clear existing links? Or just overwrite?
+        # Simplest: Clear and add.
+        # This is a full update of users.
+        
+        # Remove old links
+        session.exec(select(UserGroupLink).where(UserGroupLink.group_id == group_id))
+        # Wait, delete statement.
+        for existing_user in db_group.users:
+             db_group.users.remove(existing_user)
+        
+        # Add new
+        for uid in group_update.user_ids:
+            user = session.get(User, uid)
+            if user:
+                db_group.users.append(user)
+
+    if group_update.project_names is not None:
+        # Update projects
+        # Remove projects from group (set group_id to null or delete?)
+        # Projects belong to a group. If we remove a project from a group, does it delete the project record?
+        # The project record IS the assignment.
+        
+        # We need to handle this carefully.
+        # "Projects" in SQL are basically claims.
+        # If we "remove" a project, we probably delete the Project record in SQL.
+        
+        # Clear current projects
+        for p in db_group.projects:
+            session.delete(p)
+            
+        # Add new projects
+        for pname in group_update.project_names:
+            # Check if project claimed by another group?
+            existing_p = session.exec(select(Project).where(Project.name == pname)).first()
+            if existing_p and existing_p.group_id != group_id:
+                 raise HTTPException(status_code=400, detail=f"Project {pname} is already assigned to another group")
+            
+            if existing_p:
+                 existing_p.group_id = group_id
+                 session.add(existing_p)
+            else:
+                 new_p = Project(name=pname, group_id=group_id)
+                 session.add(new_p)
+    
+    session.add(db_group)
+    session.commit()
+    session.refresh(db_group)
+    return db_group
+
+@router.delete("/{group_id}")
+async def delete_group(
+    group_id: int,
+    session: Session = Depends(get_session),
+    current_user: User = Depends(get_current_admin_user),
+):
+    db_group = session.get(Group, group_id)
+    if not db_group:
+        raise HTTPException(status_code=404, detail="Group not found")
+    session.delete(db_group)
+    session.commit()
+    return {"ok": True}

@@ -1,98 +1,49 @@
-# Copilot instructions — open-deepwiki (Java Graph RAG API + Indexer)
+# Copilot Instructions
 
-## Big picture (what we’re building)
+This file defines the coding rules and behavior for this project. Please follow them strictly.
 
-- This repo started as a demo in `java_graph_rag.py` (supprimé), but the intended direction est une **vraie application** avec :
-  - an **indexing entrypoint** (CLI/job) that parses a Java codebase and writes to a persistent Chroma collection
-  - a **query API** (HTTP) that runs retrieval + graph-enrichment to serve RAG-ready context
+## Global Rules
 
-## Core data flow (keep this intact)
+1.  **Communication Language**: You must always communicate with the user in **English**.
+2.  **Code Language**: All code, comments, variable/function/class names, and tests must be written in **English**.
+3.  **Context**: Forget any prior context regarding "Java Graph RAG API" or "indexer". This project is a modern web application (Python/FastAPI + Vue.js/Tailwind).
 
-- Tree-sitter Java grammar build: `setup_java_language()` → `build/java-languages.so`
-- Parsing: `JavaParser.parse_java_file()` uses tree-sitter queries + **`.captures()`** to emit `JavaMethod` objects
-- Indexing: `index_java_methods()` converts methods to LangChain `Document` + metadata and calls `vectorstore.add_documents()`
-- Retrieval: `GraphEnrichedRetriever` does similarity search then enriches results by following `calls`
+## PYTHON GUIDELINES
 
-## Non-obvious requirements / gotchas (do not break)
+### Style and Formatting
+-   Strictly adhere to **PEP 8**.
+-   Use line breaks to keep code airy and readable.
 
-- `JavaParser.__init__` requires `build/java-languages.so`. Ensure `setup_java_language()` ran successfully before creating a parser.
-- `setup_java_language()` needs external tools (git + build toolchain). Tests will **skip** if setup fails.
-- Chroma metadata must be primitive types: `index_java_methods()` serializes `calls` as a **comma-separated string**.
-  - `GraphEnrichedRetriever` must keep accepting both string and list-like `calls` (tests rely on this).
-- Use a single canonical import for LangChain OpenAI integrations (no multi-tier fallbacks):
-  - `from langchain_openai import OpenAIEmbeddings` in `core/rag/embeddings.py`
-  - `from langchain_openai import ChatOpenAI` in `utils/chat.py`
+### Typing
+-   **Strict**: Type hints are **MANDATORY** for all function arguments, return values, and class attributes.
+-   **Modern**: Use modern Python 3.10+ type syntax (e.g., `list[str]` instead of `List[str]`, `dict[str, Any]` instead of `Dict[str, Any]`, `str | None` instead of `Optional[str]`).
+-   Never use `Any` unless absolutely necessary and justified.
 
-## Strict configuration (no silent fallback)
+### Documentation
+-   **Docstrings**: Every public module, class, and function MUST have an explanatory docstring.
+-   **Format**: Use Google or NumPy style for docstrings.
 
-- Do not introduce implicit fallbacks for LLM/embeddings endpoints or models.
-  - Embeddings must use an explicit base URL (`OPENAI_EMBEDDING_API_BASE` or `llm_api_base` in YAML) and explicit model (`OPENAI_EMBEDDING_MODEL` / `embeddings_model`).
-  - Chat must use an explicit base URL (`OPENAI_CHAT_API_BASE` or `llm_api_base` in YAML) and explicit model (`OPENAI_CHAT_MODEL` / `chat_model`).
-- If a required value is missing, fail fast with a clear error (do not silently fall back to `OPENAI_API_BASE` or built-in default models).
+### Asynchrony
+-   Always prefer `async`/`await` for I/O-bound operations (databases, HTTP requests).
 
-## App structure guidance (refactor target)
+### Architecture and Validation
+-   Use **Pydantic** for data validation and schema definitions (models).
 
-- When splitting the single script into a multi-module app, preserve behavior by moving code (don’t rewrite logic):
-  - parser + tree-sitter setup: `setup_java_language()`, `JavaParser`, `JavaMethod`
-  - indexing: `index_java_methods()` + configuration for `persist_directory` (default today is `./chroma_db`)
-  - retrieval: `GraphEnrichedRetriever` + any serialization/parsing of `calls`
-  - API layer: thin HTTP handlers that call “index”/“query” functions (no business logic in handlers)
+## VUE.JS GUIDELINES
 
-## Entrypoints (current)
+### Tech Stack
+-   **Framework**: Vue.js 3.
+-   **Language**: TypeScript (strict).
+-   **Build**: Vite.
 
-- Preferred entrypoints live at the repo root:
-  - `app.py` (FastAPI)
-  - `indexer.py` (CLI)
-  - `config.py` (YAML config)
+### Code Style
+-   **Composition API**: Exclusively use the **Composition API** with `<script setup lang="ts">` syntax.
+-   **Naming**: Component filenames and imports must be in **PascalCase** (e.g., `AppButton.vue`, `UserProfile.vue`).
 
-## Python environment (IMPORTANT)
+### CSS and Design
+-   **CSS Framework**: Use **Tailwind CSS** for styling.
+-   **No Scoped CSS**: Avoid `<style scoped>` blocks unless absolutely necessary for specific styles that cannot be handled via Tailwind. Prefer utility classes.
+-   **Design**: The interface must be modern, clean, and responsive.
 
-- Always use the repo-local virtualenv in `./venv` when running any Python command in the terminal.
-  - Use `./venv/bin/python` instead of `python`.
-  - Use `./venv/bin/pip` instead of `pip`.
-  - For module invocations: `./venv/bin/python -m <module>` (e.g., `./venv/bin/python -m unittest -v`).
-  - If the venv is missing, create it with `python -m venv venv` and then install deps.
-
-## Documentation + typing (MANDATORY)
-
-- All public functions, methods, and classes MUST have a pydoc-style docstring.
-  - Describe what it does in 1–3 sentences.
-  - Document every argument (name + meaning + constraints).
-  - Document return value(s) and what they represent.
-  - Document raised exceptions when applicable.
-- Type hints are mandatory:
-  - Every function/method argument MUST be typed.
-  - Every function/method MUST declare a return type.
-  - Prefer precise types (e.g., `Optional[str]`, `Sequence[JavaMethod]`, `Dict[str, Any]`) over `Any`.
-  - Add types for local variables when it materially improves clarity or when inference is non-obvious.
-  - Do not introduce untyped containers like `list`/`dict`; use `list[str]`, `dict[str, int]`, etc.
-- Keep docstrings and types consistent with runtime behavior (no stale docs).
-
-## Local workflows
-
-- Install deps: `pip install -r requirements.txt`
-- Run unit tests: `python -m unittest -v` (uses fixture `fixtures/SampleService.java`)
-- Run lightweight validation: `python validate.py`
-
-Note: Prefer the venv equivalents:
-- `./venv/bin/pip install -r requirements.txt`
-- `./venv/bin/python -m unittest -v`
-- `./venv/bin/python validate.py`
-
-## Environment variables
-
-- `OPENAI_API_KEY`: required for embeddings + real retrieval demo (demo currently skips if not set)
-- `OPENAI_API_BASE`: optional custom endpoint (passed to `create_embeddings(base_url=...)`)
-
-## Change hygiene (what to update together)
-
-- If you change method ID/signature/calls formatting or metadata keys, update all of:
-  - `index_java_methods()` document content + metadata
-  - `GraphEnrichedRetriever` enrichment + `calls` parsing
-  - `test_java_graph_rag.py` expectations
-
-## Concrete examples in this repo
-
-- Parsing + call extraction patterns: `JavaParser.parse_java_file()` / `_extract_calls()` in `core/parsing/java_parser.py`
-- Javadoc extraction pattern: `JavaParser._extract_javadoc()` (sibling lookup + raw-text fallback)
-- Test fixture covering constructors, generics, and calls: `fixtures/SampleService.java`
+### State Management
+-   Use **Pinia** for global application state management. Do not use Vuex.

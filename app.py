@@ -8,10 +8,17 @@ import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import Session, select
 
 from config import (AppConfig, apply_config_to_env, configure_logging,
                     load_config, prefetch_tiktoken_encodings)
+from core.database import create_db_and_tables, get_session
+from core.models.user import User
+from core.security import get_password_hash
 from router.api import router as api_router
+from router.auth import router as auth_router
+from router.groups import router as groups_router
+from router.users import router as users_router
 from utils.vectorstore import _get_vectorstore
 
 
@@ -41,6 +48,12 @@ def create_app() -> FastAPI:
         fastapi_app.state.config = config
         fastapi_app.state.config_path = config_path or "open-deepwiki.yaml"
         fastapi_app.state.startup_error = None
+
+        # Create DB Tables
+        create_db_and_tables()
+        
+        # Default admin creation logic removed in favor of /setup flow
+
 
         try:
             prefetch_tiktoken_encodings(config)
@@ -74,6 +87,9 @@ def create_app() -> FastAPI:
         )
 
     fastapi_app.include_router(api_router, prefix="/api/v1")
+    fastapi_app.include_router(auth_router, prefix="/api/v1/auth", tags=["Auth"])
+    fastapi_app.include_router(users_router, prefix="/api/v1/users", tags=["Users"])
+    fastapi_app.include_router(groups_router, prefix="/api/v1/groups", tags=["Groups"])
 
     return fastapi_app
 
