@@ -1,9 +1,20 @@
 @import "tailwindcss";
 
+:root {
+  --color-primary: #357a38;
+  --color-primary-light: #e8f5e9;
+  --color-bg-white: #ffffff;
+  --color-bg-gray: #f9fafb;
+  --color-text-dark: #1f2937;
+  --color-text-light: #6b7280;
+}
+
 html,
 body,
 #app {
   height: 100%;
+  background-color: var(--color-bg-gray);
+  color: var(--color-text-dark);
 }
 
 body {

@@ -7,8 +7,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
+from core.models.user import User
+from core.security import get_current_maintainer, get_current_user
 from router.common import normalize_project
 from router.schemas import (IndexDirectoryRequest, IndexDirectoryResponse,
                             IndexingStatusResponse)
@@ -23,7 +25,11 @@ logger = logging.getLogger(__name__)
 
 
 @router.get("/index-status", response_model=IndexingStatusResponse)
-def get_index_status(request: Request, project: str) -> IndexingStatusResponse:
+def get_index_status(
+    request: Request, 
+    project: str,
+    current_user: User = Depends(get_current_user)
+) -> IndexingStatusResponse:
     """Return indexing status for a project scope.
 
     Args:
@@ -50,7 +56,11 @@ def get_index_status(request: Request, project: str) -> IndexingStatusResponse:
 
 
 @router.post("/index-directory", response_model=IndexDirectoryResponse)
-def index_directory(request: Request, req: IndexDirectoryRequest) -> IndexDirectoryResponse:
+def index_directory(
+    request: Request, 
+    req: IndexDirectoryRequest,
+    current_user: User = Depends(get_current_maintainer)
+) -> IndexDirectoryResponse:
     """Index a directory of Java files into a project scope."""
 
     if getattr(request.app.state, "startup_error", None):

@@ -100,27 +100,19 @@ python3 -m venv venv
 
 ## Core Data Flow (Keep This Intact)
 
-- Tree-sitter Java grammar build: `setup_java_language()` → `build/java-languages.so`
-- Parsing: `JavaParser.parse_java_file()` uses tree-sitter queries + **`.captures()`** to emit `JavaMethod` objects
-- Indexing: `index_java_methods()` converts methods to LangChain `Document` + metadata and calls `vectorstore.add_documents()`
-- Retrieval: `GraphEnrichedRetriever` does similarity search then enriches results by following `calls`
+## PYTHON GUIDELINES
 
 ## Non-Obvious Requirements / Gotchas (Do Not Break)
 
-- `JavaParser.__init__` requires `build/java-languages.so`. Ensure `setup_java_language()` ran successfully before creating a parser.
-- `setup_java_language()` needs external tools (git + build toolchain). Tests will **skip** if setup fails.
-- Chroma metadata must be primitive types: `index_java_methods()` serializes `calls` as a **comma-separated string**.
-  - `GraphEnrichedRetriever` must keep accepting both string and list-like `calls` (tests rely on this).
-- Use a single canonical import for LangChain OpenAI integrations (no multi-tier fallbacks):
-  - `from langchain_openai import OpenAIEmbeddings` in `core/rag/embeddings.py`
-  - `from langchain_openai import ChatOpenAI` in `utils/chat.py`
+### Typing
+-   **Strict**: Type hints are **MANDATORY** for all function arguments, return values, and class attributes.
+-   **Modern**: Use modern Python 3.10+ type syntax (e.g., `list[str]` instead of `List[str]`, `dict[str, Any]` instead of `Dict[str, Any]`, `str | None` instead of `Optional[str]`).
+-   Never use `Any` unless absolutely necessary and justified.
 
 ## Strict Configuration (No Silent Fallback)
 
-- Do not introduce implicit fallbacks for LLM/embeddings endpoints or models.
-  - Embeddings must use an explicit base URL (`OPENAI_EMBEDDING_API_BASE` or `llm_api_base` in YAML) and explicit model (`OPENAI_EMBEDDING_MODEL` / `embeddings_model`).
-  - Chat must use an explicit base URL (`OPENAI_CHAT_API_BASE` or `llm_api_base` in YAML) and explicit model (`OPENAI_CHAT_MODEL` / `chat_model`).
-- If a required value is missing, fail fast with a clear error (do not silently fall back to `OPENAI_API_BASE` or built-in default models).
+### Asynchrony
+-   Always prefer `async`/`await` for I/O-bound operations (databases, HTTP requests).
 
 ## Environment Variables
 

@@ -46,3 +46,4 @@ cache
 checkpoints.sqlite3
 front/node_modules/
 OUTPUT
+users.db

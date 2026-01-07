@@ -3,18 +3,29 @@ from __future__ import annotations
 import os
 from typing import List
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlmodel import Session
 
+from core.access_control import validate_project_access
+from core.database import get_session
+from core.models.user import User
+from core.security import get_current_user
 from router.common import get_scoped_retriever, normalize_project
 from router.schemas import QueryRequest, QueryResult
-
 
 router = APIRouter()
 
 
 @router.post("/query", response_model=List[QueryResult])
-def query(request: Request, req: QueryRequest) -> List[QueryResult]:
+def query(
+    request: Request, 
+    req: QueryRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+) -> List[QueryResult]:
     """Vector similarity search within a project scope."""
+    
+    validate_project_access(session, current_user, req.project)
 
     if getattr(request.app.state, "startup_error", None):
         raise HTTPException(

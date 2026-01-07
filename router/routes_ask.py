@@ -6,13 +6,18 @@ import uuid
 from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from langchain_core.callbacks.base import BaseCallbackHandler
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, HumanMessage
+from sqlmodel import Session
 
+from core.access_control import validate_project_access
+from core.database import get_session
+from core.models.user import User
 from core.rag.retriever import GraphEnrichedRetriever
+from core.security import get_current_user
 from router.common import get_scoped_retriever, normalize_project
 from router.schemas import (AskRequest, AskResponse,
                             ConversationHistoryMessage,
@@ -309,16 +314,24 @@ async def _retrieve_context(
 
 
 @router.post("/ask/stream")
-async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
+async def ask_stream(
+    request: Request, 
+    req: AskRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+) -> StreamingResponse:
     """Ask and stream the assistant response via SSE.
 
     Args:
         request: FastAPI request.
         req: Ask request payload. `project` is provided in the JSON body.
+        current_user: The authenticated user.
+        session: Database session.
 
     Returns:
         StreamingResponse using `text/event-stream`.
     """
+    validate_project_access(session, current_user, req.project)
 
     async def _stream() -> AsyncIterator[str]:
         import asyncio
@@ -706,8 +719,15 @@ def delete_conversation_history(request: Request, req: DeleteConversationRequest
 
 
 @router.post("/ask", response_model=AskResponse)
-async def ask(request: Request, req: AskRequest) -> AskResponse:
+async def ask(
+    request: Request, 
+    req: AskRequest,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session)
+) -> AskResponse:
     """Ask within a project scope (project provided in request body)."""
+    
+    validate_project_access(session, current_user, req.project)
 
     if getattr(request.app.state, "startup_error", None):
         raise HTTPException(
