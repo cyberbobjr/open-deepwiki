@@ -413,7 +413,7 @@ class DocumentationSiteGenerator:
                 "2) Implementation Details (how the files collaborate)\n"
                 "3) Key Classes/Methods (mention specific elements from the summaries)\n\n"
                 "Diagram Requirements:\n"
-                "Include at least ONE Mermaid sequence diagram explaining the main flow.\n"
+                "- Include at least ONE Mermaid sequence diagram explaining the main flow.\n"
                 "- Include at least ONE Mermaid class diagram explaining the relationships.\n"
                 "- Mermaid Syntax Rules:\n"
                 "  1) Use exactly ONE statement per line. Never put multiple statements on one line.\n"

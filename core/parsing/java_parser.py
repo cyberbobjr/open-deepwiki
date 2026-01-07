@@ -67,13 +67,12 @@ class JavaParser:
 
         captures = query.captures(tree.root_node)
 
-        package_name = self._extract_package_name(tree.root_node, bytes(java_code, "utf8"))
+        # Convert to bytes once for all subsequent operations
+        code_bytes = bytes(java_code, "utf8")
+        package_name = self._extract_package_name(tree.root_node, code_bytes)
 
         for node, capture_name in captures:
             method_type = "method" if capture_name == "method" else "constructor"
-            
-            # Use byte slicing to handle multi-byte characters correctly
-            code_bytes = bytes(java_code, "utf8")
             
             signature = self._extract_signature(node, code_bytes)
             code = code_bytes[node.start_byte : node.end_byte].decode("utf8")
@@ -84,7 +83,7 @@ class JavaParser:
             start_line = int(getattr(node, "start_point", (0, 0))[0]) + 1
             end_line = int(getattr(node, "end_point", (0, 0))[0]) + 1
 
-            enclosing_type = self._extract_enclosing_type_name(node, bytes(java_code, "utf8"))
+            enclosing_type = self._extract_enclosing_type_name(node, code_bytes)
             method_id = self._generate_id(
                 signature,
                 package_name=package_name,
