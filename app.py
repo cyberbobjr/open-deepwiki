@@ -22,6 +22,9 @@ def create_app() -> FastAPI:
     try:
         early_config: AppConfig = load_config(config_path_env)
     except Exception:
+        # If config loading fails (file not found, parse error, etc.),
+        # continue without CORS middleware. The app will retry loading
+        # during lifespan startup and report errors there if needed.
         early_config = None
 
     @asynccontextmanager
