@@ -4,16 +4,23 @@ from sqlmodel import Session, select
 from core.models.user import Project, User
 
 
-def validate_project_access(session: Session, user: User, project_name: str):
-    """
-    Validates if the user has access to the given project.
+def validate_project_access(session: Session, user: User, project_name: str) -> None:
+    """Validate if the user has access to the given project.
     
-    Rules:
-    1. Admin has access to everything.
-    2. If check_project_access is strict (default):
-       - If Project defined in DB: User must belong to the Project's Group.
-       - If Project NOT in DB: It is considered 'Public' (or we can fallback to Admin-only).
-         Current decision: Public (accessible to all) to support legacy/unclaimed projects.
+    Access rules:
+    1. Admin users have access to all projects.
+    2. If a project is defined in the database:
+       - User must belong to the project's group.
+    3. If a project is not in the database:
+       - Considered 'public' and accessible to all authenticated users.
+       
+    Args:
+        session: Database session.
+        user: The user requesting access.
+        project_name: Name of the project to access.
+        
+    Raises:
+        HTTPException: If the user doesn't have access to the project.
     """
     if user.role == "admin":
         return

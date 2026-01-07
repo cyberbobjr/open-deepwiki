@@ -26,26 +26,6 @@ const availableUsers = computed(() => {
 
 async function fetchGroup() {
     const groupId = route.params.id;
-    // We assume backend returns users in the group object or we fetch them separately?
-    // router/groups.py: read_groups returns list[GroupRead]. GroupRead has users: List[UserRead] = []
-    // But does GET /groups/{id} exist? Let's check router/groups.py in previous turn...
-    // It does NOT seem to have a specific GET /groups/{id} endpoint!
-    // It has GET / (list), POST /, PUT /{id}, DELETE /{id}.
-    // Wait, I need to check if I need to add GET /{id} or if I can use the list.
-    // Ideally I should add GET /{id} for consistency, just like I did for users.
-    // FOR NOW, I will stick to fetching the list and finding the group client-side 
-    // OR calling fetching users? No, better add the endpoint first if missing.
-    // actually, let's look at the implementation plan. I said "Ensure endpoints exist... GET /groups/{id}".
-    // So I MUST check the backend file again to be 100% sure. 
-    // Looking at previous turn's router/groups.py content... 
-    // line 13: GET / (list)
-    // line 26: POST /
-    // line 41: PUT /{id}
-    // line 105: DELETE /{id}
-    // MISSING GET /{id}! 
-    // I will implement fetching via list for now or add the endpoint. 
-    // Adding the endpoint is safer. I'll add it in the next step.
-    // For now, write this code assuming the endpoint exists or will exist.
 
     try {
         // Fetch group
@@ -55,7 +35,6 @@ async function fetchGroup() {
 
         // If 404 or method not allowed, fallback to list (temporary hack until backend updated)
         if (!res.ok) {
-            // throw new Error("Group endpoint not ready");
             const listRes = await fetch(`/api/v1/groups/`, {
                 headers: { 'Authorization': `Bearer ${authStore.token}` }
             });

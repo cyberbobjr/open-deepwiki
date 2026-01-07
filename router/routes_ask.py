@@ -320,17 +320,18 @@ async def ask_stream(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_session)
 ) -> StreamingResponse:
-    
-    validate_project_access(session, current_user, req.project)
     """Ask and stream the assistant response via SSE.
 
     Args:
         request: FastAPI request.
         req: Ask request payload. `project` is provided in the JSON body.
+        current_user: The authenticated user.
+        session: Database session.
 
     Returns:
         StreamingResponse using `text/event-stream`.
     """
+    validate_project_access(session, current_user, req.project)
 
     async def _stream() -> AsyncIterator[str]:
         import asyncio
@@ -715,15 +716,6 @@ def delete_conversation_history(request: Request, req: DeleteConversationRequest
         checkpointer.delete_thread(sid)
 
     return DeleteConversationResponse(project=normalized_project, session_id=sid, deleted=True)
-
-
-from fastapi import Depends
-from sqlmodel import Session
-
-from core.access_control import validate_project_access
-from core.database import get_session
-from core.models.user import User
-from core.security import get_current_user
 
 
 @router.post("/ask", response_model=AskResponse)

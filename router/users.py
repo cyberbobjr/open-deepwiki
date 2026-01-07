@@ -1,4 +1,4 @@
-from typing import Annotated, Dict, List
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import Session, select
@@ -13,12 +13,27 @@ router = APIRouter()
 @router.get("/me", response_model=UserRead)
 async def read_users_me(
     current_user: Annotated[User, Depends(get_current_user)],
-):
+) -> User:
+    """Get the current authenticated user's information.
+    
+    Args:
+        current_user: The currently authenticated user.
+        
+    Returns:
+        The user's information.
+    """
     return current_user
 
-@router.get("/has-users", response_model=Dict[str, bool])
-async def check_users_exist(session: Session = Depends(get_session)):
-    """Check if any users exist in the database."""
+@router.get("/has-users", response_model=dict[str, bool])
+async def check_users_exist(session: Session = Depends(get_session)) -> dict[str, bool]:
+    """Check if any users exist in the database.
+    
+    Args:
+        session: Database session.
+        
+    Returns:
+        Dictionary with 'exists' key indicating whether users exist.
+    """
     user = session.exec(select(User)).first()
     return {"exists": user is not None}
 
@@ -26,18 +41,25 @@ async def check_users_exist(session: Session = Depends(get_session)):
 async def setup_first_admin(
     user: UserCreate,
     session: Session = Depends(get_session),
-):
-    """
-    Create the first admin user. 
-    Only allowed if the database has no users.
+) -> User:
+    """Create the first admin user during initial setup.
+    
+    This endpoint is only available when no users exist in the database.
+    The created user is automatically assigned the admin role.
+    
+    Args:
+        user: User creation data including email, name, and password.
+        session: Database session.
+        
+    Returns:
+        The created admin user.
+        
+    Raises:
+        HTTPException: If users already exist (setup completed).
     """
     existing_user = session.exec(select(User)).first()
     if existing_user:
         raise HTTPException(status_code=403, detail="Setup already completed. Users exist.")
-
-    # Validate email uniqueness strictly (redundant with DB constraint but good for error msg)
-    if session.exec(select(User).where(User.email == user.email)).first():
-         raise HTTPException(status_code=400, detail="Email already registered")
 
     # Force role to admin
     user_data = user.model_dump()
@@ -50,13 +72,24 @@ async def setup_first_admin(
     session.refresh(db_user)
     return db_user
 
-@router.get("/", response_model=List[UserRead])
+@router.get("/", response_model=list[UserRead])
 async def read_users(
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_admin_user),
     offset: int = 0,
     limit: int = Query(default=100, le=100),
-):
+) -> list[User]:
+    """List all users (admin only).
+    
+    Args:
+        session: Database session.
+        current_user: The current admin user.
+        offset: Number of records to skip.
+        limit: Maximum number of records to return.
+        
+    Returns:
+        List of users.
+    """
     users = session.exec(select(User).offset(offset).limit(limit)).all()
     return users
 
@@ -65,7 +98,20 @@ async def create_user(
     user: UserCreate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_admin_user),
-):
+) -> User:
+    """Create a new user (admin only).
+    
+    Args:
+        user: User creation data.
+        session: Database session.
+        current_user: The current admin user.
+        
+    Returns:
+        The created user.
+        
+    Raises:
+        HTTPException: If a user with the email already exists.
+    """
     if session.exec(select(User).where(User.email == user.email)).first():
         raise HTTPException(status_code=400, detail="Email already registered")
     
@@ -81,7 +127,21 @@ async def update_user(
     user: UserUpdate,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_admin_user),
-):
+) -> User:
+    """Update an existing user (admin only).
+    
+    Args:
+        user_id: ID of the user to update.
+        user: User update data.
+        session: Database session.
+        current_user: The current admin user.
+        
+    Returns:
+        The updated user.
+        
+    Raises:
+        HTTPException: If the user is not found.
+    """
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -103,7 +163,20 @@ async def read_user(
     user_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_admin_user),
-):
+) -> User:
+    """Get a specific user by ID (admin only).
+    
+    Args:
+        user_id: ID of the user to retrieve.
+        session: Database session.
+        current_user: The current admin user.
+        
+    Returns:
+        The requested user.
+        
+    Raises:
+        HTTPException: If the user is not found.
+    """
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
@@ -115,7 +188,20 @@ async def delete_user(
     user_id: int,
     session: Session = Depends(get_session),
     current_user: User = Depends(get_current_admin_user),
-):
+) -> dict[str, bool]:
+    """Delete a user (admin only).
+    
+    Args:
+        user_id: ID of the user to delete.
+        session: Database session.
+        current_user: The current admin user.
+        
+    Returns:
+        Success confirmation.
+        
+    Raises:
+        HTTPException: If the user is not found.
+    """
     db_user = session.get(User, user_id)
     if not db_user:
         raise HTTPException(status_code=404, detail="User not found")
