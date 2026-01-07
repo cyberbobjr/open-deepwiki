@@ -387,13 +387,11 @@ async def ask_stream(request: Request, req: AskRequest) -> StreamingResponse:
         if getattr(config, "custom_system_prompt", None):
             system_prompt += "\n\n" + config.custom_system_prompt
 
-        user_prompt = "\n\n".join(
-            [
-                f"Question:\n{req.question}",
-                "Context:",
-                "\n\n".join(context_blocks) if context_blocks else "(no context)",
-            ]
-        )
+        # Inject context into System Message
+        context_str = "\n\n".join(context_blocks) if context_blocks else "(no context)"
+        system_prompt += f"\n\n### Context:\n{context_str}"
+
+        user_prompt = req.question
 
         # config already defined above
         code_root = getattr(config, "java_codebase_dir", "./") or "./"
@@ -757,13 +755,12 @@ async def ask(request: Request, req: AskRequest) -> AskResponse:
     if getattr(config, "custom_system_prompt", None) or os.getenv("OPEN_DEEPWIKI_CUSTOM_SYSTEM_PROMPT"):
         custom = getattr(config, "custom_system_prompt", None) or os.getenv("OPEN_DEEPWIKI_CUSTOM_SYSTEM_PROMPT")
         system_prompt += "\n\n" + str(custom)
-    user_prompt = "\n\n".join(
-        [
-            f"Question:\n{req.question}",
-            "Context:",
-            "\n\n".join(context_blocks) if context_blocks else "(no context)",
-        ]
-    )
+    
+    # Inject context into System Message
+    context_str = "\n\n".join(context_blocks) if context_blocks else "(no context)"
+    system_prompt += f"\n\n### Context:\n{context_str}"
+
+    user_prompt = req.question
 
     if not hasattr(request.app.state, "code_agents"):
         request.app.state.code_agents = {}

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter, RouterLink } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 
 import DOMPurify from 'dompurify'
 import * as MarkdownIt from 'markdown-it'
@@ -9,9 +9,10 @@ import { installMermaidFence, renderMermaidInRoot } from '../utils/mermaid'
 
 import ConfirmModal from '../components/ConfirmModal.vue'
 import Panel from '../components/Panel.vue'
+import Spinner from '../components/Spinner.vue'
 
-import { useChatStore } from '../stores/chat'
 import type { QueryResult } from '../api/openDeepWiki'
+import { useChatStore } from '../stores/chat'
 
 const route = useRoute()
 const router = useRouter()
@@ -554,9 +555,17 @@ onMounted(() => scheduleMermaidRender())
                   <div
                     v-if="m.role === 'assistant'"
                     class="chat-markdown"
-                    v-html="renderMarkdown(m.content)"
-                    @click="onAssistantMarkdownClick"
-                  ></div>
+                  >
+                    <div v-if="!m.content" class="flex items-center gap-2 text-slate-500 py-1">
+                      <Spinner class="h-4 w-4" />
+                      <span>Thinking...</span>
+                    </div>
+                    <div
+                      v-else
+                      v-html="renderMarkdown(m.content)"
+                      @click="onAssistantMarkdownClick"
+                    ></div>
+                  </div>
                   <div v-else class="whitespace-pre-wrap">{{ m.content }}</div>
                 </div>
               </div>
