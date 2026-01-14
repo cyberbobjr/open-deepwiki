@@ -27,7 +27,7 @@ def health(request: Request) -> Dict[str, Any]:
         "status": "ok",
         "config_path": getattr(request.app.state, "config_path", "open-deepwiki.yaml"),
         "debug_level": getattr(config, "debug_level", "INFO"),
-        "java_codebase_dir": getattr(config, "java_codebase_dir", "./"),
+        "codebase_dir": getattr(config, "codebase_dir", "./"),
         "project_name": getattr(config, "project_name", None),
         "default_project": None,
 
@@ -43,7 +43,7 @@ def health(request: Request) -> Dict[str, Any]:
         "tiktoken_prefetch": bool(getattr(config, "tiktoken_prefetch", False)),
         "tiktoken_prefetch_encodings": getattr(config, "tiktoken_prefetch_encodings", None),
         "chroma_persist_dir": os.getenv("CHROMA_PERSIST_DIR", "./chroma_db"),
-        "chroma_collection": os.getenv("CHROMA_COLLECTION", "java_methods"),
+        "chroma_collection": os.getenv("CHROMA_COLLECTION", "code_blocks"),
         "loaded_project_scopes": [str(p) for p in loaded_scopes if p],
         "method_docs_loaded": int(loaded_total),
     }

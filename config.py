@@ -12,7 +12,7 @@ DEFAULT_CONFIG_PATH = "open-deepwiki.yaml"
 
 class AppConfig(BaseModel):
     debug_level: str = "INFO"
-    java_codebase_dir: str = "./"
+    codebase_dir: str = "./"
 
     # Optional project scope name.
     # When set, all indexed documents get metadata.project=<project_name>.
@@ -38,6 +38,11 @@ class AppConfig(BaseModel):
     # Feature docs generation tuning
     # Number of file summaries to classify per LLM call when building feature pages.
     docs_feature_batch_size: int = 10
+
+    # LLM Context Limit
+    # Maximum characters for LLM input during summarization (truncation threshold).
+    # Default is 400_000 (roughly 100k tokens), suitable for large context models.
+    llm_max_context_chars: int = 400_000
 
 
 
@@ -84,8 +89,21 @@ class AppConfig(BaseModel):
     # also use a chat model for answer generation.
     embeddings_model: Optional[str] = None
     chat_model: Optional[str] = None
+
+    # Shared API Base/Key (fallback)
     llm_api_base: Optional[str] = None
     llm_api_key: Optional[str] = None
+
+    # Specific API Base/Key (overrides shared)
+    chat_api_base: Optional[str] = None
+    chat_api_key: Optional[str] = None
+    
+    embeddings_api_base: Optional[str] = None
+    embeddings_api_key: Optional[str] = None
+
+    summarization_model: Optional[str] = None
+    summarization_api_base: Optional[str] = None
+    summarization_api_key: Optional[str] = None
 
     # Embeddings input compatibility
     # If True, langchain_openai may tokenize long inputs and send token-id arrays to the
@@ -141,20 +159,51 @@ def apply_config_to_env(config: AppConfig) -> None:
     - OPENAI_CHAT_MODEL
     """
 
+    # Shared/Fallback
     if getattr(config, "llm_api_key", None) and not os.getenv("OPENAI_API_KEY"):
         os.environ["OPENAI_API_KEY"] = str(config.llm_api_key)
 
     if getattr(config, "llm_api_base", None) and not os.getenv("OPENAI_API_BASE"):
         os.environ["OPENAI_API_BASE"] = str(config.llm_api_base)
 
-    # Endpoints: derive from llm_api_base (strict: never derive from OPENAI_API_BASE).
-    llm_api_base = getattr(config, "llm_api_base", None)
+    # Specific: Embeddings
+    # Priority: env > config.embeddings_* > config.llm_*
+    embed_base = getattr(config, "embeddings_api_base", None) or getattr(config, "llm_api_base", None)
+    if embed_base and not os.getenv("OPENAI_EMBEDDING_API_BASE"):
+        os.environ["OPENAI_EMBEDDING_API_BASE"] = str(embed_base)
+        
+    embed_key = getattr(config, "embeddings_api_key", None) or getattr(config, "llm_api_key", None)
+    if embed_key and not os.getenv("OPENAI_EMBEDDING_API_KEY"):
+         # We define a custom env var for embeddings key if needed, 
+         # though standard OpenAIEmbeddings often just uses OPENAI_API_KEY.
+         # For flexibility, we set both if specificity is needed.
+         # But standard LangChain OpenAIEmbeddings uses 'openai_api_key' param or OPENAI_API_KEY env.
+         # We will handle this in core/rag/embeddings.py
+         os.environ["OPEN_DEEPWIKI_EMBEDDING_API_KEY"] = str(embed_key)
 
-    if llm_api_base and not os.getenv("OPENAI_EMBEDDING_API_BASE"):
-        os.environ["OPENAI_EMBEDDING_API_BASE"] = str(llm_api_base)
+    # Specific: Chat
+    # Priority: env > config.chat_* > config.llm_*
+    chat_base = getattr(config, "chat_api_base", None) or getattr(config, "llm_api_base", None)
+    if chat_base and not os.getenv("OPENAI_CHAT_API_BASE"):
+        os.environ["OPENAI_CHAT_API_BASE"] = str(chat_base)
+        
+    chat_key = getattr(config, "chat_api_key", None) or getattr(config, "llm_api_key", None)
+    if chat_key and not os.getenv("OPEN_DEEPWIKI_CHAT_API_KEY"):
+        os.environ["OPEN_DEEPWIKI_CHAT_API_KEY"] = str(chat_key)
 
-    if llm_api_base and not os.getenv("OPENAI_CHAT_API_BASE"):
-        os.environ["OPENAI_CHAT_API_BASE"] = str(llm_api_base)
+    # Specific: Summarization
+    # Priority: env > config.summarization_* > config.llm_*
+    sum_model = getattr(config, "summarization_model", None)
+    if sum_model and not os.getenv("OPEN_DEEPWIKI_SUMMARIZATION_MODEL"):
+        os.environ["OPEN_DEEPWIKI_SUMMARIZATION_MODEL"] = str(sum_model)
+
+    sum_base = getattr(config, "summarization_api_base", None) or getattr(config, "llm_api_base", None)
+    if sum_base and not os.getenv("OPEN_DEEPWIKI_SUMMARIZATION_API_BASE"):
+        os.environ["OPEN_DEEPWIKI_SUMMARIZATION_API_BASE"] = str(sum_base)
+        
+    sum_key = getattr(config, "summarization_api_key", None) or getattr(config, "llm_api_key", None)
+    if sum_key and not os.getenv("OPEN_DEEPWIKI_SUMMARIZATION_API_KEY"):
+        os.environ["OPEN_DEEPWIKI_SUMMARIZATION_API_KEY"] = str(sum_key)
 
     if getattr(config, "embeddings_model", None) and not os.getenv("OPENAI_EMBEDDING_MODEL"):
         os.environ["OPENAI_EMBEDDING_MODEL"] = str(config.embeddings_model)

@@ -12,6 +12,7 @@ def create_chat_model(
     temperature: float = 0.0,
     streaming: bool = False,
     callbacks: Optional[Sequence[Any]] = None,
+    api_key: Optional[str] = None,
 ) -> ChatOpenAI:
     """Create a chat LLM.
 
@@ -51,6 +52,7 @@ def create_chat_model(
         "model": selected_model,
         "temperature": temperature,
         "streaming": bool(streaming),
+        "openai_api_key": api_key or os.getenv("OPEN_DEEPWIKI_CHAT_API_KEY") or os.getenv("OPENAI_API_KEY"),
     }
 
     if callbacks is not None:

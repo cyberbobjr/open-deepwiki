@@ -19,7 +19,7 @@ chroma_anonymized_telemetry: false
 
 # Root directory to scan/index for Java code.
 # Example: /abs/path/to/repo or ./fixtures
-java_codebase_dir: ./fixtures
+codebase_dir: ./fixtures
 
 # Optional project scope name.
 # When set, indexed docs include metadata.project=<project_name> and API calls can
@@ -40,6 +40,11 @@ docs_output_dir: OUTPUT
 
 # Feature docs generation tuning
 docs_feature_batch_size: 10
+
+# LLM Context Limit (truncation)
+# Maximum characters to send to LLM for summarization/generation.
+# Default is 400_000 (approx 100k tokens), good for GPT-4o / Claude 3.5.
+llm_max_context_chars: 400000
 
 # Optional: index one heuristic summary document per Java file.
 # Helps RAG answer file-level questions without reading every method.

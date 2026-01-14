@@ -1,0 +1,56 @@
+{
+  "overview": {
+    "title": "Project Overview",
+    "path": "PROJECT_OVERVIEW.md",
+    "headings": [
+      {
+        "level": 1,
+        "text": "Project Overview"
+      },
+      {
+        "level": 2,
+        "text": "Introduction"
+      },
+      {
+        "level": 3,
+        "text": "Detail"
+      }
+    ]
+  },
+  "modules": [
+    {
+      "title": "Module A",
+      "path": "modules/module-a.md",
+      "headings": [
+        {
+          "level": 1,
+          "text": "Module A"
+        },
+        {
+          "level": 2,
+          "text": "Class A"
+        },
+        {
+          "level": 3,
+          "text": "Method A"
+        }
+      ]
+    }
+  ],
+  "features": [
+    {
+      "title": "Feature X",
+      "path": "features/feature-x.md",
+      "headings": [
+        {
+          "level": 1,
+          "text": "Feature X"
+        },
+        {
+          "level": 2,
+          "text": "Scenario 1"
+        }
+      ]
+    }
+  ]
+}

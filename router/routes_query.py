@@ -51,7 +51,7 @@ def query(
                 signature=meta.get("signature"),
                 type=meta.get("type"),
                 calls=meta.get("calls"),
-                has_javadoc=meta.get("has_javadoc"),
+                has_docstring=meta.get("has_docstring"),
                 file_path=meta.get("file_path"),
                 start_line=meta.get("start_line"),
                 end_line=meta.get("end_line"),

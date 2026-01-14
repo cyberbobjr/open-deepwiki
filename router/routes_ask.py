@@ -260,7 +260,7 @@ async def _retrieve_context(
                 signature=meta.get("signature"),
                 type=meta.get("type"),
                 calls=meta.get("calls"),
-                has_javadoc=meta.get("has_javadoc"),
+                has_docstring=meta.get("has_docstring"),
                 file_path=meta.get("file_path"),
                 start_line=meta.get("start_line"),
                 end_line=meta.get("end_line"),
@@ -409,7 +409,7 @@ async def ask_stream(
         user_prompt = req.question
 
         # config already defined above
-        code_root = getattr(config, "java_codebase_dir", "./") or "./"
+        code_root = getattr(config, "codebase_dir", "./") or "./"
         code_root_key = str(Path(code_root).expanduser().resolve())
 
         cp_backend = str(getattr(config, "checkpointer_backend", "sqlite") or "sqlite").lower()
@@ -789,7 +789,7 @@ async def ask(
     if not hasattr(request.app.state, "checkpointers"):
         request.app.state.checkpointers = {}
 
-    code_root = getattr(config, "java_codebase_dir", "./") or "./"
+    code_root = getattr(config, "codebase_dir", "./") or "./"
     code_root_key = str(Path(code_root).expanduser().resolve())
 
     cp_backend = str(getattr(config, "checkpointer_backend", "sqlite") or "sqlite").lower()

@@ -1,12 +1,20 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref } from 'vue';
 
-import { getIndexStatus, indexDirectory } from '../api/openDeepWiki'
+import { getIndexStatus, indexDirectory } from '../api/openDeepWiki';
 
 const emit = defineEmits<{
   indexed: []
   indexingStarted: [payload: { project: string; path: string; status: 'in_progress' | 'done' }]
-  indexingStatus: [payload: { project: string; status: 'in_progress' | 'done'; error?: string | null }]
+  indexingStatus: [
+    payload: {
+      project: string
+      status: 'in_progress' | 'done'
+      error?: string | null
+      step?: string | null
+      details?: string | null
+    },
+  ]
 }>()
 
 const project = ref('')
@@ -16,6 +24,8 @@ const loading = ref(false)
 const error = ref('')
 const success = ref('')
 const status = ref<'in_progress' | 'done' | ''>('')
+const step = ref('')
+const details = ref('')
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -27,12 +37,21 @@ async function pollIndexStatus(project: string): Promise<void> {
     // up to ~30 minutes
     const s = await getIndexStatus(project)
     status.value = s.status
+    if (s.step) step.value = s.step
+    if (s.details) details.value = s.details
+
     if (s.error) {
       error.value = s.error
     }
-    emit('indexingStatus', { project, status: s.status, error: s.error })
+    emit('indexingStatus', {
+      project,
+      status: s.status,
+      error: s.error,
+      step: s.step,
+      details: s.details,
+    })
     if (s.status === 'done') return
-    await sleep(1000)
+    await sleep(5000)
   }
 }
 
@@ -40,6 +59,8 @@ async function onSubmit(): Promise<void> {
   error.value = ''
   success.value = ''
   status.value = ''
+  step.value = ''
+  details.value = ''
 
   const p = project.value.trim()
   const dir = path.value.trim()
@@ -75,31 +96,20 @@ async function onSubmit(): Promise<void> {
     <div class="grid gap-3 sm:grid-cols-2">
       <label class="grid gap-1 text-left text-sm">
         <span class="font-medium">Project name</span>
-        <input
-          v-model="project"
-          class="h-10 rounded-md border border-slate-200 bg-white px-3 text-slate-900"
-          placeholder="my-project"
-          :disabled="loading"
-        />
+        <input v-model="project" class="h-10 rounded-md border border-slate-200 bg-white px-3 text-slate-900"
+          placeholder="my-project" :disabled="loading" />
       </label>
 
       <label class="grid gap-1 text-left text-sm">
         <span class="font-medium">Directory to index</span>
-        <input
-          v-model="path"
-          class="h-10 rounded-md border border-slate-200 bg-white px-3 text-slate-900"
-          placeholder="/abs/path/to/java/code"
-          :disabled="loading"
-        />
+        <input v-model="path" class="h-10 rounded-md border border-slate-200 bg-white px-3 text-slate-900"
+          placeholder="/abs/path/to/java/code" :disabled="loading" />
       </label>
     </div>
 
     <div class="mt-3 flex items-center gap-3">
-      <button
-        type="submit"
-        class="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-60"
-        :disabled="loading"
-      >
+      <button type="submit" class="h-10 rounded-md bg-slate-900 px-4 text-sm font-medium text-white disabled:opacity-60"
+        :disabled="loading">
         {{ loading ? 'Indexing…' : 'Index project' }}
       </button>
 
@@ -107,6 +117,12 @@ async function onSubmit(): Promise<void> {
       <p v-else-if="success" class="text-sm text-green-700">{{ success }}</p>
     </div>
 
-    <p v-if="status" class="mt-2 text-left text-sm text-slate-700">Status: {{ status }}</p>
+    <div v-if="status" class="mt-4 rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+      <div class="flex items-center justify-between font-medium">
+        <span class="text-slate-900">Status: {{ status }}</span>
+        <span v-if="step" class="text-slate-600">({{ step }})</span>
+      </div>
+      <p v-if="details" class="mt-1 font-mono text-xs text-slate-500">{{ details }}</p>
+    </div>
   </form>
 </template>

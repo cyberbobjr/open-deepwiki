@@ -5,19 +5,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-from core.parsing.java_parser import JavaMethod
+from core.parsing.models import CodeBlock
+from core.ports.graph_port import GraphStats, GraphStore
 
 
-@dataclass(frozen=True)
-class GraphStats:
-    project: Optional[str]
-    files: int
-    methods: int
-    call_edges: int
-    contains_edges: int
-
-
-class SqliteProjectGraphStore:
+class SqliteProjectGraphStore(GraphStore):
     """SQLite-backed project graph.
 
     This is meant to capture a persistent "big picture" view of the indexed project.
@@ -76,7 +68,7 @@ class SqliteProjectGraphStore:
     def _file_node_id(project: Optional[str], file_path: str) -> str:
         return f"{project}::file::{file_path}" if project else f"file::{file_path}"
 
-    def rebuild(self, *, project: Optional[str], methods: Sequence[JavaMethod]) -> GraphStats:
+    def rebuild(self, *, project: Optional[str], methods: Sequence[CodeBlock]) -> GraphStats:
         """Rebuild graph for a project scope from a set of parsed methods."""
 
         project_key = project

@@ -40,6 +40,11 @@ If you use OpenAI-compatible gateways, configure explicit base URLs:
 
 You can also configure these via YAML (see `open-deepwiki.yaml.sample`) and point the app to it with `OPEN_DEEPWIKI_CONFIG`.
 
+Notable optional configurations:
+
+- `llm_max_context_chars`: Limit LLM input size (default 400,000)
+- `codebase_dir`: Root directory to index
+
 ## Run the backend
 
 ```bash

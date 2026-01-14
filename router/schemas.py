@@ -26,7 +26,7 @@ class QueryResult(BaseModel):
     signature: Optional[str] = None
     type: Optional[str] = None
     calls: Any = None
-    has_javadoc: Optional[bool] = None
+    has_docstring: Optional[bool] = None
     file_path: Optional[str] = None
     start_line: Optional[int] = None
     end_line: Optional[int] = None
@@ -66,6 +66,26 @@ class IndexDirectoryResponse(BaseModel):
     indexed_file_summaries: int = 0
     loaded_method_docs: int
     indexed_at: Optional[str] = None
+    status: str = Field(
+        default="done",
+        description='Indexing status for this project scope: "in_progress" or "done".',
+    )
+
+
+class RegenerateDocumentationRequest(BaseModel):
+    """Regenerate docs request payload."""
+
+    project: str = Field(
+        ...,
+        min_length=1,
+        description="Project scope name (required) attached to indexed docs.",
+    )
+
+
+class RegenerateDocumentationResponse(BaseModel):
+    """Regenerate docs response payload."""
+
+    project: str
     status: str = Field(
         default="done",
         description='Indexing status for this project scope: "in_progress" or "done".',
@@ -112,6 +132,14 @@ class IndexingStatusResponse(BaseModel):
         default=None,
         description="Best-effort path of the file most recently processed (or being processed).",
     )
+    step: Optional[str] = Field(
+        default=None,
+        description='Detailed step name (e.g. "scanning", "graph", "semantic").',
+    )
+    details: Optional[str] = Field(
+        default=None,
+        description="Human readable progress details.",
+    )
 
 
 class ProjectOverviewResponse(BaseModel):
@@ -132,6 +160,14 @@ class ProjectDocsIndexResponse(BaseModel):
 
     project: str
     markdown: str
+    updated_at: Optional[str] = None
+
+
+class ProjectDocsTocResponse(BaseModel):
+    """Return the generated `toc.json` for a project scope."""
+
+    project: str
+    toc: Dict[str, Any]
     updated_at: Optional[str] = None
 
 

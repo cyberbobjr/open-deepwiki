@@ -33,6 +33,7 @@ button:disabled {
 .chat-markdown {
   white-space: normal;
   word-break: break-word;
+  margin-top: 1rem;
   @apply text-sm leading-relaxed text-slate-900;
 }
 
@@ -47,7 +48,6 @@ button:disabled {
 .chat-markdown :where(ul, ol) {
   margin: 0.5rem 0 0.5rem;
   padding: 0;
-  /* Tailwind preflight resets list-style; restore it inside markdown. */
   @apply pl-5 text-slate-900;
 }
 
@@ -168,4 +168,156 @@ button:disabled {
 
 .chat-markdown :where(th) {
   @apply bg-slate-50 text-left font-semibold;
+}
+
+/* --- Documentation Styles (Larger, prose-like) --- */
+.doc-markdown {
+  white-space: normal;
+  word-break: break-word;
+  @apply text-base leading-7 text-slate-900;
+}
+
+.doc-markdown :where(p) {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+}
+
+.doc-markdown :where(h1) {
+  margin-top: 0;
+  margin-bottom: 0.8888889em;
+  font-size: 2.25em;
+  line-height: 1.1111111;
+  font-weight: 800;
+  @apply text-slate-900 tracking-tight;
+}
+
+.doc-markdown :where(h2) {
+  margin-top: 2em;
+  margin-bottom: 1em;
+  font-size: 1.5em;
+  line-height: 1.3333333;
+  font-weight: 700;
+  @apply text-slate-900 tracking-tight;
+}
+
+.doc-markdown :where(h3) {
+  margin-top: 1.6em;
+  margin-bottom: 0.6em;
+  font-size: 1.25em;
+  line-height: 1.6;
+  font-weight: 600;
+  @apply text-slate-900 tracking-tight;
+}
+
+.doc-markdown :where(h4) {
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  font-weight: 600;
+}
+
+.doc-markdown :where(ul, ol) {
+  margin-top: 1.25em;
+  margin-bottom: 1.25em;
+  padding-left: 1.625em;
+  @apply list-outside;
+}
+
+.doc-markdown :where(ul) {
+  @apply list-disc;
+}
+
+.doc-markdown :where(ol) {
+  @apply list-decimal;
+}
+
+.doc-markdown :where(li) {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.doc-markdown :where(a) {
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  @apply text-blue-600 decoration-blue-300;
+}
+
+.doc-markdown :where(a:hover) {
+  @apply text-blue-800 decoration-blue-800;
+}
+
+.doc-markdown :where(pre) {
+  margin-top: 1.7142857em;
+  margin-bottom: 1.7142857em;
+  border-radius: 0.375rem;
+  padding: 0.8571429em 1.1428571em;
+  overflow-x: auto;
+  font-size: 0.875em;
+  line-height: 1.7142857;
+  @apply bg-slate-900 text-slate-50;
+}
+
+.doc-markdown :where(code) {
+  font-weight: 600;
+  font-size: 0.875em;
+  @apply font-mono text-slate-900 bg-slate-100 rounded px-1 py-0.5;
+}
+
+.doc-markdown :where(pre code) {
+  background-color: transparent;
+  border-width: 0;
+  border-radius: 0;
+  padding: 0;
+  font-weight: 400;
+  color: inherit;
+  font-size: inherit;
+  font-family: inherit;
+  line-height: inherit;
+}
+
+.doc-markdown :where(blockquote) {
+  margin-top: 1.6em;
+  margin-bottom: 1.6em;
+  padding-left: 1em;
+  font-style: italic;
+  @apply border-l-4 border-slate-200 text-slate-700;
+}
+
+.doc-markdown :where(table) {
+  width: 100%;
+  table-layout: auto;
+  text-align: left;
+  margin-top: 2em;
+  margin-bottom: 2em;
+  font-size: 0.875em;
+  line-height: 1.7142857;
+  border-collapse: collapse;
+}
+
+.doc-markdown :where(th) {
+  font-weight: 600;
+  padding: 0.5714286em 0.5714286em;
+  @apply border-b border-slate-300 bg-slate-50 text-slate-900;
+}
+
+.doc-markdown :where(td) {
+  padding: 0.5714286em 0.5714286em;
+  @apply border-b border-slate-200 text-slate-500;
+}
+
+.doc-markdown :where(hr) {
+  margin-top: 3em;
+  margin-bottom: 3em;
+  @apply border-slate-200;
+}
+
+.doc-markdown :where(.mermaid-diagram) {
+  margin-top: 2em;
+  margin-bottom: 2em;
+}
+
+/* Scroll margin for headings (for anchor links) */
+.doc-markdown :where(h1, h2, h3, h4) {
+  scroll-margin-top: 5rem;
 }

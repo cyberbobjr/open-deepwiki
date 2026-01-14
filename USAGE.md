@@ -20,15 +20,25 @@ Tip (to avoid conda/global issues):
 Set up environment variables (required for indexing/query/ask):
 
 ```bash
-export OPENAI_API_KEY="your-api-key"
-
-# If you use a custom gateway, set these explicitly:
-export OPENAI_EMBEDDING_API_BASE="https://your-internal-api.example.com/v1"
-export OPENAI_CHAT_API_BASE="https://your-internal-api.example.com/v1"
-
-# Also set explicit models (no implicit defaults):
+# 1. Embeddings (Vector Store)
+export OPENAI_EMBEDDING_API_BASE="https://your-embedding-api.example.com/v1"
+export OPEN_DEEPWIKI_EMBEDDING_API_KEY="sk-embed-..."
 export OPENAI_EMBEDDING_MODEL="text-embedding-3-large"
+
+# 2. Chat (General RAG / Conversational)
+export OPENAI_CHAT_API_BASE="https://your-chat-api.example.com/v1"
+export OPEN_DEEPWIKI_CHAT_API_KEY="sk-chat-..."
 export OPENAI_CHAT_MODEL="gpt-4o-mini"
+
+# 3. Summarization (Deep Analysis for Docs)
+export OPEN_DEEPWIKI_SUMMARIZATION_API_BASE="https://your-sum-api.example.com/v1"
+export OPEN_DEEPWIKI_SUMMARIZATION_API_KEY="sk-sum-..."
+export OPEN_DEEPWIKI_SUMMARIZATION_MODEL="gpt-4o"
+
+# Fallback (Legacy / Global)
+# Used if specific keys above are not set.
+export OPENAI_API_KEY="your-global-api-key"
+export OPENAI_API_BASE="https://api.openai.com/v1"
 
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
 # Useful behind corporate proxies / custom PKI.
@@ -61,7 +71,7 @@ Optional: YAML config at the repo root (default `open-deepwiki.yaml`):
 
 ```yaml
 debug_level: INFO
-java_codebase_dir: ./fixtures
+codebase_dir: ./fixtures
 
 # Optional: project scope name
 # When set, indexed docs include metadata.project=<project_name>.
@@ -81,8 +91,24 @@ checkpointer_sqlite_path: ./checkpoints.sqlite3
 # Optional: project graph persistence (big-picture)
 project_graph_sqlite_path: ./project_graph.sqlite3
 
-# Optional: LLM endpoints
-# If you want a single URL for embeddings + chat, set only:
+# Optional: LLM endpoints (Split Configuration)
+
+# 1. Embeddings
+embeddings_model: text-embedding-3-small
+embeddings_api_base: http://localhost:11434/v1
+embeddings_api_key: ollama
+
+# 2. Chat
+chat_model: gpt-4o-mini
+chat_api_base: https://api.openai.com/v1
+chat_api_key: sk-chat-...
+
+# 3. Summarization
+summarization_model: gpt-4o
+summarization_api_base: https://api.openai.com/v1
+summarization_api_key: sk-sum-...
+
+# Fallback (Legacy)
 # llm_api_base: https://your-internal-api.example.com/v1
 
 # Optional: custom root CA bundle (PEM) for outbound HTTPS
@@ -116,7 +142,7 @@ tiktoken_prefetch_encodings:
 
 ### 1) Index a Java codebase
 
-Indexes all `.java` files under the configured directory (`java_codebase_dir`) and persists to Chroma (default `./chroma_db`).
+Indexes all source files under the configured directory (`codebase_dir`) and persists to Chroma (default `./chroma_db`).
 
 ```bash
 ./venv/bin/python indexer.py
@@ -127,7 +153,7 @@ Indexes all `.java` files under the configured directory (`java_codebase_dir`) a
 Useful variables:
 
 - `CHROMA_PERSIST_DIR` (default `./chroma_db`)
-- `CHROMA_COLLECTION` (default `java_methods`)
+- `CHROMA_COLLECTION` (default `code_blocks`)
 - `OPEN_DEEPWIKI_CONFIG` (path to the YAML)
 
 ### 2) Run the API
@@ -261,7 +287,7 @@ from core.rag.embeddings import create_embeddings
 # Setup
 embeddings = create_embeddings()
 vectorstore = Chroma(
-    collection_name="java_methods",
+    collection_name="code_blocks",
     embedding_function=embeddings
 )
 
@@ -289,14 +315,14 @@ for doc in results:
 Index parsed methods into the vector store:
 
 ```python
-from core.rag.indexing import index_java_methods
+from core.rag.indexing import index_code_blocks
 
 # Parse Java code
 parser = JavaParser()
 methods = parser.parse_java_file(java_code)
 
 # Index into vector store
-method_docs_map = index_java_methods(methods, vectorstore)
+method_docs_map = index_code_blocks(methods, vectorstore)
 ```
 
 ### 4. Custom OpenAI Endpoint

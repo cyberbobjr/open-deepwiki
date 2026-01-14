@@ -147,8 +147,14 @@ def create_embeddings(base_url: Optional[str] = None) -> OpenAIEmbeddings:
             "Embeddings model is not set. Set OPENAI_EMBEDDING_MODEL (or embeddings_model in YAML)."
         )
 
+    # Resolve API Key for Embeddings
+    # 1. Specific Env Var
+    # 2. General Env Var
+    api_key = os.getenv("OPEN_DEEPWIKI_EMBEDDING_API_KEY") or os.getenv("OPENAI_API_KEY")
+
     kwargs: Dict[str, Any] = {
         "model": model,
+        "openai_api_key": api_key,
     }
 
     # Compatibility note:

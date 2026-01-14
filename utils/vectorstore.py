@@ -11,7 +11,7 @@ from core.rag.embeddings import create_embeddings
 
 def _get_vectorstore() -> Chroma:
     persist_directory = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
-    collection_name = os.getenv("CHROMA_COLLECTION", "java_methods")
+    collection_name = os.getenv("CHROMA_COLLECTION", "code_blocks")
 
     base_url = os.getenv("OPENAI_EMBEDDING_API_BASE")
     embeddings = create_embeddings(base_url)

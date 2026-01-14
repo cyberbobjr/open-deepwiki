@@ -14,6 +14,16 @@ export type IndexDirectoryResponse = {
   status?: 'in_progress' | 'done'
 }
 
+export type RegenerateDocumentationRequest = {
+  project: string
+}
+
+export type RegenerateDocumentationResponse = {
+  project: string
+  status: 'in_progress' | 'done'
+}
+
+
 export type IndexingStatusResponse = {
   project: string
   status: 'in_progress' | 'done'
@@ -24,6 +34,8 @@ export type IndexingStatusResponse = {
   processed_files?: number | null
   remaining_files?: number | null
   current_file?: string | null
+  step?: string | null
+  details?: string | null
 }
 
 export type ProjectInfo = {
@@ -164,10 +176,17 @@ function getApiBase(): string {
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${getApiBase()}${path.startsWith('/') ? '' : '/'}${path}`
+  const token = localStorage.getItem('token')
+  const authHeaders: Record<string, string> = {}
+  if (token) {
+    authHeaders['Authorization'] = `Bearer ${token}`
+  }
+
   const res = await fetch(url, {
     ...init,
     headers: {
       'Content-Type': 'application/json',
+      ...authHeaders,
       ...(init?.headers ?? {}),
     },
   })
@@ -201,6 +220,13 @@ export async function indexDirectory(req: IndexDirectoryRequest): Promise<IndexD
   })
 }
 
+export async function regenerateDocumentation(req: RegenerateDocumentationRequest): Promise<RegenerateDocumentationResponse> {
+  return requestJson<RegenerateDocumentationResponse>('/regenerate-documentation', {
+    method: 'POST',
+    body: JSON.stringify(req),
+  })
+}
+
 export async function getIndexStatus(project: string): Promise<IndexingStatusResponse> {
   const encoded = encodeURIComponent(project)
   return requestJson<IndexingStatusResponse>(`/index-status?project=${encoded}`, { method: 'GET' })
@@ -224,12 +250,6 @@ export type ProjectOverviewResponse = {
   indexed_at?: string | null
 }
 
-export type ProjectDocsIndexResponse = {
-  project: string
-  markdown: string
-  updated_at?: string | null
-}
-
 export async function getProjectOverview(project: string): Promise<ProjectOverviewResponse> {
   return requestJson<ProjectOverviewResponse>('/project-overview', {
     method: 'POST',
@@ -237,11 +257,48 @@ export async function getProjectOverview(project: string): Promise<ProjectOvervi
   })
 }
 
-export async function getProjectDocsIndex(project: string): Promise<ProjectDocsIndexResponse> {
-  return requestJson<ProjectDocsIndexResponse>('/project-docs-index', {
+export type TocHeading = {
+  level: number
+  text: string
+}
+
+export type TocItem = {
+  title: string
+  short_title?: string
+  path: string
+  headings: TocHeading[]
+}
+
+
+export type ProjectDocsTocResponse = {
+  project: string
+  toc: {
+    overview: TocItem
+    categories: Record<string, TocItem[]>
+    features: TocItem[]
+    feature_navigation?: Record<string, any>
+  }
+  updated_at?: string | null
+}
+
+export async function getProjectDocsToc(project: string): Promise<ProjectDocsTocResponse> {
+  return requestJson<ProjectDocsTocResponse>('/project-docs-toc', {
     method: 'POST',
     body: JSON.stringify({ project } satisfies ProjectOverviewRequest),
   })
+}
+
+export async function readProjectDoc(project: string, docPath: string): Promise<string> {
+  const url = `${getApiBase()}/projects/${encodeURIComponent(project)}/docs/${docPath}`
+  const token = localStorage.getItem('token')
+  const headers: Record<string, string> = {}
+  if (token) headers['Authorization'] = `Bearer ${token}`
+
+  const res = await fetch(url, { headers })
+  if (!res.ok) {
+    throw new Error(`Failed to load doc: ${res.statusText}`)
+  }
+  return res.text()
 }
 
 export async function deleteProject(project: string): Promise<DeleteProjectResponse> {

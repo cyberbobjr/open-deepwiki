@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
 import os
 import shutil
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List
 
@@ -11,15 +11,10 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 
 from router.common import normalize_project
-from router.schemas import (
-    DeleteProjectRequest,
-    DeleteProjectResponse,
-    ProjectInfo,
-    ProjectDocsIndexResponse,
-    ProjectOverviewRequest,
-    ProjectOverviewResponse,
-)
-
+from router.schemas import (DeleteProjectRequest, DeleteProjectResponse,
+                            ProjectDocsIndexResponse, ProjectDocsTocResponse,
+                            ProjectInfo, ProjectOverviewRequest,
+                            ProjectOverviewResponse)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -206,19 +201,20 @@ def get_project_overview(request: Request, req: ProjectOverviewRequest) -> Proje
     )
 
 
-@router.post("/project-docs-index", response_model=ProjectDocsIndexResponse)
-def get_project_docs_index(request: Request, req: ProjectOverviewRequest) -> ProjectDocsIndexResponse:
-    """Return the generated docs landing page (`index.md`) for a project.
+
+@router.post("/project-docs-toc", response_model=ProjectDocsTocResponse)
+def get_project_docs_toc(request: Request, req: ProjectOverviewRequest) -> ProjectDocsTocResponse:
+    """Return the generated `toc.json` for a project.
 
     Args:
         request: FastAPI request.
         req: Request payload containing the project scope.
 
     Returns:
-        The markdown content of `<docs_output_dir>/<project>/docs/index.md`.
+        The JSON content of `<docs_output_dir>/<project>/toc.json`.
 
     Raises:
-        HTTPException: If the docs index is missing for the requested project.
+        HTTPException: If the toc.json is missing for the requested project.
     """
 
     normalized_project = normalize_project(req.project)
@@ -229,28 +225,37 @@ def get_project_docs_index(request: Request, req: ProjectOverviewRequest) -> Pro
         docs_base = (Path.cwd() / docs_base).resolve()
 
     docs_root = (docs_base / normalized_project / "docs").resolve()
-    index_path = docs_root / "index.md"
+    # toc.json is inside docs/ because site_generator receives the docs/ folder as output_dir
+    toc_path = docs_root / "toc.json"
 
-    if not index_path.exists() or not index_path.is_file():
+    if not toc_path.exists() or not toc_path.is_file():
         raise HTTPException(
             status_code=404,
             detail=(
-                f"No generated docs index found for project={normalized_project!r}. "
+                f"No generated docs TOC found for project={normalized_project!r}. "
                 "Run /index-directory first."
             ),
         )
 
-    content = index_path.read_text(encoding="utf-8")
+    import json
+    try:
+        content = json.loads(toc_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+         raise HTTPException(
+            status_code=500,
+            detail=f"Failed to parse toc.json for project={normalized_project!r}.",
+        )
+
     updated_at: str | None = None
     try:
-        mtime = index_path.stat().st_mtime
+        mtime = toc_path.stat().st_mtime
         updated_at = datetime.fromtimestamp(mtime, tz=timezone.utc).isoformat()
     except Exception:
         updated_at = None
 
-    return ProjectDocsIndexResponse(
+    return ProjectDocsTocResponse(
         project=normalized_project,
-        markdown=content,
+        toc=content,
         updated_at=updated_at,
     )
 

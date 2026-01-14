@@ -1,0 +1,15 @@
+{
+  "overview": "PROJECT_OVERVIEW.md",
+  "modules": [
+    {
+      "name": "Module A",
+      "path": "modules/module-a.md"
+    }
+  ],
+  "features": [
+    {
+      "name": "Feature X",
+      "path": "features/feature-x.md"
+    }
+  ]
+}
