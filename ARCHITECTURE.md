@@ -365,7 +365,7 @@ Pour éviter la séparation stricte entre "Récit Fonctionnel" et "Implémentati
 
 ## Détail : Moteur de Recherche & RAG (Query)
 
-Cette section décrit comment une requête utilisateur est traitée, enrichie par le contexte (RAG), et comment l'Agent répond.
+Cette section décrit comment une requête utilisateur est traitée via le flux streaming SSE, enrichie par le contexte hybride, et exécutée par l'agent.
 
 ### Diagramme de Classes (Query Pipeline)
 
@@ -376,6 +376,7 @@ classDiagram
         +ask_stream(request)
         -_condense_query()
         -_retrieve_context()
+        -_fetch_session_history()
     }
 
     class GraphEnrichedRetriever {
@@ -395,18 +396,20 @@ classDiagram
         +put()
     }
     
-    class VectorStore {
-        <<ChromaDB>>
-        +similarity_search()
+    class RetrievalCache {
+        <<In-Memory>>
+        +get(key)
+        +set(key, value)
     }
 
     AskRouter --> SqliteCheckpointSaver : Load History
-    AskRouter --> GraphEnrichedRetriever : Fetch Context
-    GraphEnrichedRetriever --> VectorStore : Search
-    AskRouter --> CodebaseAgent : Run Reasoning
+    AskRouter --> GraphEnrichedRetriever : Fetch Code Context
+    AskRouter --> VectorStore : Fetch Docs/Overview
+    AskRouter --> RetrievalCache : Dedup
+    AskRouter --> CodebaseAgent : Threaded Execution
 ```
 
-### Flux d'Exécution (Requête RAG)
+### Flux d'Exécution (Requête SSE & Récupération Hybride)
 
 ```mermaid
 sequenceDiagram
@@ -415,51 +418,71 @@ sequenceDiagram
     participant Hist as Checkpointer (SQLite)
     participant LLM as LLM (OpenAI)
     participant Ret as GraphEnrichedRetriever
-    participant VDB as ChromaDB
-    participant Agent as CodebaseAgent
+    participant VDB as ChromaDB (Docs/Code)
+    participant Agent as CodebaseAgent (Thread)
 
-    User->>+API: Question (SSE Request)
+    User->>+API: POST /ask/stream (JSON Payload)
     
-    %% 1. Context Loading
+    %% 1. History & Condensation
     API->>Hist: fetch_session_history(session_id)
-    Hist-->>API: Previous Messages
-
-    %% 2. Query Refinement
+    Hist-->>API: Messages List
     API->>LLM: _condense_query(question, history)
-    LLM-->>API: Standalone Search Query
+    LLM-->>API: Standalone Query
     
-    %% 3. Retrieval (RAG)
-    API->>Ret: get_relevant_documents(standalone_query)
-    Ret->>VDB: similarity_search(query, k)
-    VDB-->>Ret: Raw Documents (Code & Docs)
-    
-    opt Dependency Enrichment
-        Ret->>Ret: Follow 'calls' metadata
-        Ret->>Ret: Fetch dependent methods
-    end
-    
-    Ret-->>API: Enriched Context (Docs + Dependencies)
+    API-->>User: SSE event: meta {query, session_id}
 
-    %% 4. Agent Execution
-    API->>Agent: create_agent(context, system_prompt)
-    API->>Agent: invoke(question)
-    
-    loop Reasoning Loop
+    %% 2. Hybrid Retrieval
+    rect rgb(240, 248, 255)
+        Note over API: _retrieve_context()
+        
+        par Code Retrieval
+            API->>Ret: get_relevant_documents(standalone_query)
+            Ret->>VDB: search(type=java_method)
+            Ret->>Ret: Follow 'calls' graph deps
+            Ret-->>API: Enriched Code Blocks
+        and Docs Retrieval
+            API->>VDB: search(type=generated_markdown)
+            VDB-->>API: Markdown Pages
+        and Overview Retrieval
+            API->>VDB: search(type=project_overview)
+            VDB-->>API: Project Overview
+        end
+        
+        API->>API: Deduplicate against History
+    end
+
+    API-->>User: SSE event: context {blocks}
+
+    %% 3. Agent Execution (Threaded)
+    API->>Agent: Create Agent (System Prompt + Tools)
+    API->>Agent: Thread.start(agent.invoke)
+
+    loop Reasoning Loop (Async Queue)
         Agent->>LLM: Think / Tool Call
-        opt If Tool Needed
-            LLM-->>Agent: Call Tool (e.g. graph_neighbors)
+        opt Tool Execution
+            LLM-->>Agent: Call Tool (vector_search, graph_overview)
             Agent->>Agent: Execute Tool
         end
-        LLM-->>Agent: Final Answer Token
-        Agent-->>API: Stream Token
-        API-->>User: SSE Event (Token)
+        LLM-->>Agent: Token
+        Agent-->>API: Queue.put(Token)
+        API-->>User: SSE event: token {delta}
     end
     
-    API-->>-User: SSE Done
+    Agent-->>API: Final Answer
+    API-->>User: SSE event: done {answer}
+    API-->>-User: Close Stream
 ```
 
-### Points Clés (Query)
+### Stratégie de Récupération "Hybride"
 
-- **Retrieval Hybride** : Le système interroge à la fois les blocs de code, les résumés de fichiers, le Project Overview, et les pages de documentation générées.
-- **Enrichissement de Graphe** : `GraphEnrichedRetriever` utilise les métadonnées statiques (`calls`) pour injecter automatiquement le code des dépendances appelées, offrant un contexte plus complet au LLM sans qu'il ait à chercher manuellement.
-- **Agent Codebase** : L'agent final dispose d'outils (`vector_search`, `project_graph_overview`) pour explorer davantage si le contexte initial RAG ne suffit pas.
+Le système ne se contente pas de chercher du code. La méthode `_retrieve_context` agrège trois sources distinctes pour donner une vision complète à l'agent :
+
+1. **Code Enriched** (`GraphEnrichedRetriever`) :
+    * Recherche vectorielle sur les chunks de code (`java_method`).
+    * **Graph Walk** : Si un chunk contient des métadonnées `calls`, le retriever va automatiquement chercher le code des fonctions appelées (via `method_docs_map`) pour fournir le contexte d'exécution immédiat.
+2. **Documentation Sémantique** :
+    * Recherche vectorielle sur les fichiers Markdown générés (`generated_markdown`), permettant de récupérer les explications fonctionnelles ("Features") liées à la requête.
+3. **Project Overview** :
+    * Injection systématique (ou via recherche) du `project_overview` pour donner le contexte global de l'architecture.
+
+Cette approche permet à l'agent de répondre aussi bien à des questions de bas niveau ("Comment fonctionne cette boucle ?") qu'à des questions de haut niveau ("Quelle est l'architecture de ce module ?").
