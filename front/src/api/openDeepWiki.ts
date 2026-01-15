@@ -267,6 +267,8 @@ export type TocItem = {
   short_title?: string
   path: string
   headings: TocHeading[]
+  sub_chapters?: TocItem[]
+  implementation_details?: TocItem[]
 }
 
 

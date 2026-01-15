@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional, Sequence
+from typing import Dict, List, Optional, Sequence
 
 from core.parsing.models import CodeBlock
 
@@ -29,4 +29,12 @@ class GraphStore(ABC):
     @abstractmethod
     def neighbors_text(self, *, project: Optional[str], node_id: str, depth: int = 1, limit: int = 60) -> str:
         """Get text description of neighbors for a node."""
+        pass
+
+    @abstractmethod
+    def get_file_dependencies(self, *, project: Optional[str]) -> Dict[str, List[str]]:
+        """
+        Get file-level dependency graph. 
+        Returns adjacency list: {file_path: [dependency_file_paths]}
+        """
         pass

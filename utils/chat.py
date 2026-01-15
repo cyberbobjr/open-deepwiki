@@ -53,6 +53,7 @@ def create_chat_model(
         "temperature": temperature,
         "streaming": bool(streaming),
         "openai_api_key": api_key or os.getenv("OPEN_DEEPWIKI_CHAT_API_KEY") or os.getenv("OPENAI_API_KEY"),
+        "max_retries": 5, # Robust retry for 503 errors
     }
 
     if callbacks is not None:

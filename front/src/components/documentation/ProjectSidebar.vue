@@ -79,62 +79,36 @@ function onNav(path: string, hash?: string) {
             <nav>
                 <ul class="flex list-none flex-col gap-1">
                     <!-- Overview -->
-                    <li>
+                    <li class="px-2 py-1 text-xs font-semibold text-slate-700">Overview</li>
+                    <li v-if="toc?.overview">
                         <a href="#"
                             class="block w-full truncate rounded-md px-2 py-1 text-left text-xs text-slate-800 hover:bg-slate-50"
-                            :class="activePath === 'PROJECT_OVERVIEW.md' || activePath === '__project_overview__' ? 'bg-slate-100 font-medium' : ''"
-                            title="Project Overview" @click.prevent="onNav('PROJECT_OVERVIEW.md')">
-                            Project Overview
+                            :class="activePath === toc.overview.path || activePath === '__project_overview__' ? 'bg-slate-100 font-medium' : ''"
+                            :title="toc.overview.title" @click.prevent="onNav(toc.overview.path)">
+                            {{ toc.overview.short_title || toc.overview.title }}
                         </a>
-                    </li>
-
-                    <!-- Categories/Modules -->
-                    <template v-if="toc?.categories">
-                        <template v-for="(modules, category) in toc.categories" :key="category">
-                            <li class="mt-2 px-2 py-1 text-xs font-semibold text-slate-700 capitalize">{{ category }}
-                            </li>
-                            <li v-for="m in modules" :key="`module:${m.path}`" class="">
+                        <!-- Sub-headings inside overview -->
+                        <ul v-if="toc.overview.headings?.length && toc.overview.path === activePath"
+                            class="ml-4 mt-1 flex list-none flex-col gap-1">
+                            <li v-for="g in groupHeadingsForSidebar(toc.overview.headings)"
+                                :key="`${toc.overview.path}#${g.parent.id}`">
                                 <a href="#"
-                                    class="block w-full truncate rounded-md px-2 py-1 text-left text-xs text-slate-800 hover:bg-slate-50"
-                                    :class="m.path === activePath ? 'bg-slate-100 font-medium' : ''" :title="m.path"
-                                    @click.prevent="onNav(m.path)">
-                                    {{ m.short_title || m.title }}
+                                    class="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
+                                    :title="g.parent.text" @click.prevent="onNav(toc.overview.path, g.parent.id)">
+                                    {{ g.parent.text }}
                                 </a>
-
-                                <!-- Sub-headings inside module -->
-                                <ul v-if="m.headings?.length && m.path === activePath"
-                                    class="ml-4 mt-1 flex list-none flex-col gap-1">
-                                    <li v-for="g in groupHeadingsForSidebar(m.headings)"
-                                        :key="`${m.path}#${g.parent.id}`">
+                                <ul class="ml-4 mt-1 flex list-none flex-col gap-1">
+                                    <li v-for="c in g.children" :key="`${toc.overview.path}#${c.id}`">
                                         <a href="#"
-                                            class="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
-                                            :title="g.parent.text" @click.prevent="onNav(m.path, g.parent.id)">
-                                            {{ g.parent.text }}
+                                            class="block w-full truncate rounded-md px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50"
+                                            :title="c.text" @click.prevent="onNav(toc.overview.path, c.id)">
+                                            {{ c.text }}
                                         </a>
-                                        <ul class="ml-4 mt-1 flex list-none flex-col gap-1">
-                                            <li v-for="c in g.children" :key="`${m.path}#${c.id}`">
-                                                <a href="#"
-                                                    class="block w-full truncate rounded-md px-2 py-1 text-left text-xs text-slate-700 hover:bg-slate-50"
-                                                    :title="c.text" @click.prevent="onNav(m.path, c.id)">
-                                                    {{ c.text }}
-                                                </a>
-                                            </li>
-                                        </ul>
                                     </li>
                                 </ul>
                             </li>
-                        </template>
-                    </template>
-
-                    <!-- Fallback: Modules flat list -->
-                    <template v-else-if="(toc as any)?.modules?.length">
-                        <li class="mt-2 px-2 py-1 text-xs font-semibold text-slate-700">Modules (Uncategorized)</li>
-                        <li v-for="m in (toc as any).modules" :key="`module:${m.path}`" class="">
-                            <a href="#" :class="m.path === activePath ? 'bg-slate-100 font-medium' : ''"
-                                @click.prevent="onNav(m.path)">{{ m.title }}</a>
-                        </li>
-                    </template>
-
+                        </ul>
+                    </li>
 
                     <!-- Features -->
                     <li class="mt-2 px-2 py-1 text-xs font-semibold text-slate-700">Features</li>
@@ -149,17 +123,55 @@ function onNav(path: string, hash?: string) {
                             {{ f.short_title || f.title }}
                         </a>
 
-                        <!-- Sub-headings inside feature -->
-                        <ul v-if="f.headings?.length && f.path === activePath"
-                            class="ml-4 mt-1 flex list-none flex-col gap-1">
-                            <li v-for="g in groupHeadingsForSidebar(f.headings)" :key="`${f.path}#${g.parent.id}`">
-                                <a href="#"
-                                    class="block w-full truncate rounded-md px-2 py-1 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
-                                    :title="g.parent.text" @click.prevent="onNav(f.path, g.parent.id)">
-                                    {{ g.parent.text }}
-                                </a>
-                            </li>
-                        </ul>
+                        <!-- Feature Details (Active only) -->
+                        <div v-if="f.path === activePath || f.sub_chapters?.some(s => s.path === activePath) || f.implementation_details?.some(i => i.path === activePath)"
+                            class="ml-2 border-l border-slate-200 pl-2">
+
+                            <!-- Sub-chapters (Deep Dives) -->
+                            <ul v-if="f.sub_chapters?.length" class="mt-1 flex list-none flex-col gap-1">
+                                <li v-for="sub in f.sub_chapters" :key="sub.path">
+                                    <a href="#"
+                                        class="block w-full truncate rounded-md px-2 py-0.5 text-left text-[11px] text-slate-600 hover:bg-slate-50"
+                                        :class="sub.path === activePath ? 'text-indigo-600 font-medium bg-indigo-50' : ''"
+                                        :title="sub.title" @click.prevent="onNav(sub.path)">
+                                        {{ sub.short_title || sub.title }}
+                                    </a>
+                                </li>
+                            </ul>
+
+                            <!-- Implementation Details (Modules) -->
+                            <div v-if="f.implementation_details?.length" class="mt-2">
+                                <span
+                                    class="block px-2 text-[10px] font-semibold uppercase text-slate-400">Implementation
+                                    Details</span>
+                                <ul class="mt-0.5 flex list-none flex-col gap-0.5">
+                                    <li v-for="impl in f.implementation_details" :key="impl.path">
+                                        <a href="#"
+                                            class="block w-full truncate rounded-md px-2 py-0.5 text-left text-[11px] text-slate-600 hover:bg-slate-50"
+                                            :class="impl.path === activePath ? 'text-indigo-600 font-medium bg-indigo-50' : ''"
+                                            :title="impl.title" @click.prevent="onNav(impl.path)">
+                                            {{ impl.short_title || impl.title }}
+                                        </a>
+                                    </li>
+                                </ul>
+                            </div>
+
+                            <!-- In-page Headings (for the active doc) -->
+                            <template v-if="f.path === activePath && f.headings?.length">
+                                <div class="mt-2 text-[10px] font-semibold text-slate-400 px-2 uppercase">On this page
+                                </div>
+                                <ul class="mt-0.5 flex list-none flex-col gap-0.5">
+                                    <li v-for="g in groupHeadingsForSidebar(f.headings)"
+                                        :key="`${f.path}#${g.parent.id}`">
+                                        <a href="#"
+                                            class="block w-full truncate rounded-md px-2 py-0.5 text-left text-[11px] text-slate-500 hover:text-slate-800"
+                                            :title="g.parent.text" @click.prevent="onNav(f.path, g.parent.id)">
+                                            {{ g.parent.text }}
+                                        </a>
+                                    </li>
+                                </ul>
+                            </template>
+                        </div>
                     </li>
                 </ul>
             </nav>

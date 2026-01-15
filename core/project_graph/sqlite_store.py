@@ -318,3 +318,31 @@ class SqliteProjectGraphStore(GraphStore):
             for node_id, label in rows:
                 out[str(node_id)] = str(label)
         return out
+
+    def get_file_dependencies(self, *, project: Optional[str]) -> Dict[str, List[str]]:
+        """Get file-level dependency graph."""
+        project_key = project
+        dependencies: Dict[str, List[str]] = {}
+        
+        with sqlite3.connect(self._path) as conn:
+            # Join edges with nodes to get file paths
+            # Filter type='calls' and exclude self-loops
+            rows = conn.execute(
+                """
+                SELECT DISTINCT s.file_path, d.file_path
+                FROM edges e
+                JOIN nodes s ON e.src = s.node_id
+                JOIN nodes d ON e.dst = d.node_id
+                WHERE (e.project IS ? OR e.project = ?)
+                  AND e.type = 'calls'
+                  AND s.file_path IS NOT NULL
+                  AND d.file_path IS NOT NULL
+                  AND s.file_path != d.file_path
+                """,
+                (project_key, project_key)
+            ).fetchall()
+            
+            for src_path, dst_path in rows:
+                dependencies.setdefault(src_path, []).append(dst_path)
+                
+        return dependencies

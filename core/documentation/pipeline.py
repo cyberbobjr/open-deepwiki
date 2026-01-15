@@ -15,6 +15,7 @@ from core.documentation.semantic_summarizer import SemanticSummarizer
 from core.documentation.site_generator import DocumentationSiteGenerator
 from core.documentation.use_case import (DocumentationRequest,
                                          GenerateDocumentationUseCase)
+from core.ports.graph_port import GraphStore
 from core.ports.llm_port import LLMProvider
 from core.ports.storage_port import DocumentationRepository, VectorStoreIndexer
 from core.rag.embeddings import create_embeddings
@@ -164,6 +165,7 @@ def run_documentation_pipeline(
     indexed_at: Optional[str] = None,
     indexed_path: Optional[str] = None,
     project_name: Optional[str] = None,
+    graph_store: Optional[GraphStore] = None,
 ) -> Path:
     """Generate a DeepWiki-style project overview markdown file.
 
@@ -207,7 +209,8 @@ def run_documentation_pipeline(
         summarizer=summarizer,
         site_generator=site_generator,
         repository=repo_adapter,
-        indexer=indexer_adapter
+        indexer=indexer_adapter,
+        graph_store=graph_store
     )
     
     final_project_name = project_name or getattr(config, "project_name", None) or os.getenv("OPEN_DEEPWIKI_PROJECT")
@@ -226,6 +229,7 @@ def run_documentation_pipeline(
         progress_callback=progress_callback,
         indexed_at=indexed_at,
         indexed_path=indexed_path,
+        graph_store=graph_store,
     )
     
     return use_case.execute(request)

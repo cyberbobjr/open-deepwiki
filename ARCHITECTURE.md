@@ -35,13 +35,15 @@ graph TD
     subgraph Services [Service Layer]
         Job["services.indexing.run_index_directory_job"]
         Indexer["services.indexing._scan_and_index_codebase"]
+        GraphBuild["services.indexing._build_project_graph"]
+        Heuristics["services.indexing._index_heuristic_summaries"]
         Ppl["core.documentation.pipeline.run_documentation_pipeline"]
     end
     
     %% Documentation Logic
     subgraph DocLogic [Documentation Logic]
         UC["GenerateDocumentationUseCase.execute()"]
-        SemSum["SemanticSummarizer (LLM Logic)"]
+        SemSum["SemanticSummarizer (LLM/Agentic)"]
         SiteGen["DocumentationSiteGenerator (Pure I/O)"]
     end
 
@@ -81,22 +83,26 @@ graph TD
     TP -->|"parse()"| CB
 
     CB -->|"List[CodeBlock]"| Job
-    Job --> Indexer
     
+    %% Job Flow
+    Job -->|"1. Scan"| Indexer
     Indexer -->|"List[CodeBlock]"| ICB
-    Indexer -->|"List[CodeBlock]"| IFS
     
-    Job -.-> GraphBuilder
+    Job -->|"2. Graph"| GraphBuild
+    GraphBuild -.-> GraphBuilder
     
-    Job -->|"run_documentation_pipeline()"| Ppl
+    Job -->|"3. Heuristics"| Heuristics
+    Heuristics -->|"List[CodeBlock]"| IFS
+    
+    Job -->|"4. Semantic Pipeline"| Ppl
     Ppl --> UC
     
     UC --> SemSum
     SemSum -->|"summarize_file()"| SemSum
-    SemSum -->|"summarize_module()"| SemSum
-    SemSum -->|"create_project_overview()"| SemSum
-    SemSum -->|"extract_features_from_modules()"| SemSum
+    SemSum -->|"detect_features_hybrid()"| SemSum
     SemSum -->|"map_files_to_features()"| SemSum
+    SemSum -->|"summarize_module(context)"| SemSum
+    SemSum -->|"create_project_overview()"| SemSum
     SemSum -->|"generate_feature_page()"| SemSum
     
     UC --> SiteGen
@@ -136,6 +142,9 @@ classDiagram
     class IndexingService {
         +run_index_directory_job()
         +run_regenerate_documentation_job()
+        -_scan_and_index_codebase()
+        -_build_project_graph()
+        -_index_heuristic_summaries()
     }
 
     class CodebaseScanner {
@@ -168,7 +177,7 @@ classDiagram
     SqliteProjectGraphStore ..|> GraphStore
 ```
 
-### Flux d'Exécution (Indexation Complète)
+### Flux d'Exécution (Indexation Complète - `run_index_directory_job`)
 
 ```mermaid
 sequenceDiagram
@@ -178,25 +187,29 @@ sequenceDiagram
     participant Graph as GraphStore
     participant Pipeline as DocumentationPipeline
 
+    Note over Job: 1. Scan & Index Code
     Job->>Scan: scan(directory)
     Scan-->>Job: List[CodeBlock]
     
     Job->>Vector: index_code_blocks(blocks)
     Vector-->>Job: Embeddings Created
     
-    opt include_file_summaries
-        Job->>Vector: index_file_summaries(blocks)
-    end
-    
-    Job->>Vector: persist()
-
+    Note over Job: 2. Build Dependency Graph
     Job->>Graph: rebuild(project, blocks)
     Job->>Graph: overview_text(project)
-    Graph-->>Job: Graph Summary
+    Graph-->>Job: Graph Overview
     
-    Job->>Pipeline: run_documentation_pipeline(project_name, indexed_path)
+    Note over Job: 3. Heuristic Summaries (Optional)
+    opt include_file_summaries
+        Job->>Vector: index_file_summaries(blocks)
+        Vector-->>Job: summaries_map
+    end
+    
+    Note over Job: 4. Semantic Documentation
+    Job->>Pipeline: run_documentation_pipeline(project_name, indexed_path, precomputed_summaries)
     Pipeline-->>Job: Documentation Generated & Indexed
     
+    Note over Job: 5. Finalize
     Job->>Job: _finalize_app_state()
 ```
 
@@ -220,16 +233,23 @@ classDiagram
         +LLMProvider llm
         +CodebaseReader reader
         +summarize_file(path, code)
-        +summarize_module(name, summaries)
+        +summarize_module(name, summaries) -> ModuleMetadata
         +create_project_overview(dir, modules)
-        +extract_features_from_modules(module_summaries)
-        +map_files_to_features(files, features)
-        +generate_feature_page(feature, related_summaries)
+        +detect_features_hybrid(modules, entrypoints, vision, graph)
+        +map_files_to_features(files, features, graph_deps)
+        +generate_feature_narrative(feature, summaries)
+        +generate_feature_technical_deep_dive(feature, summaries, facet)
     }
 
     class DocumentationSiteGenerator {
-        +build_site(output_dir, overview, modules, features, mappings)
+        +build_site(output_dir, overview, modules, narratives, deep_dives, mappings)
         +feature_filename(name)
+    }
+
+    class ModuleMetadata {
+        +string short_title
+        +string category
+        +string summary
     }
 
     %% Ports (Interfaces)
@@ -257,11 +277,12 @@ classDiagram
     GenerateDocumentationUseCase --> DocumentationRepository
     GenerateDocumentationUseCase --> VectorStoreIndexer
     
+    SemanticSummarizer ..> ModuleMetadata : produces
     SemanticSummarizer --> LLMProvider
     DocumentationSiteGenerator --> LLMProvider
 ```
 
-### Flux d'Exécution (Pipeline de Documentation)
+### Flux d'Exécution (Pipeline Documentaire Hybride)
 
 ```mermaid
 sequenceDiagram
@@ -270,60 +291,75 @@ sequenceDiagram
     participant Reader as CodebaseReader
     participant Summarizer as SemanticSummarizer
     participant SiteGen as DocumentationSiteGenerator (IO)
-    participant Repo as DocumentationRepository
     participant Indexer as VectorStoreIndexer
 
     Pipeline->>UC: execute(DocumentationRequest)
-    UC->>Reader: read_files()
-    Reader-->>UC: grouped_files
-    UC->>Summarizer: set_known_files(all_files)
     
     %% 1. Semantic File Summaries
+    UC->>Reader: read_files()
     loop For each file
         UC->>Summarizer: summarize_file(code)
-        Summarizer-->>UC: File Summary (may use tools)
+        Summarizer-->>UC: File Summary (Arcitectural Role)
     end
     
-    %% 2. Module Summaries
+    %% 2. Feature Extraction & Hybrid Discovery (Moved Up)
+    opt If Site Generation Enabled
+        Note over UC: Gather Hybrid Context (Vision, Entrypoints, Graph)
+        UC->>Reader: Read README
+        
+        UC->>Summarizer: detect_features_hybrid(files_by_folder, entrypoints, vision, graph)
+        Summarizer-->>UC: Feature List (Functional)
+        
+        UC->>Summarizer: map_files_to_features(files, features, graph_deps)
+        Summarizer-->>UC: Mapping {feature: [files]}
+    end
+
+    %% 3. Module Summaries & Metadata (Context-Aware)
     loop For each module
-        UC->>Summarizer: summarize_module(file_summaries)
-        Summarizer-->>UC: Module Summary
+        UC->>Summarizer: summarize_module(file_summaries, related_features)
+        Summarizer-->>UC: ModuleMetadata (Category + Summary + Backlinks)
         opt Indexing
-            UC->>Indexer: index_module_summary(project, module, content)
+            UC->>Indexer: index_module_summary()
         end
     end
     
-    %% 3. Project Overview
+    %% 4. Project Overview
     UC->>Summarizer: create_project_overview(modules)
     Summarizer-->>UC: Project Overview
-    UC->>Repo: save_project_overview(overview)
     
-    opt Indexing
-        UC->>Indexer: index_overview(project, content)
-    end
-    
-    %% 4. Feature Extraction & Generation
+    %% 5. Feature Pages Generation
     opt If Site Generation Enabled
-        UC->>Summarizer: extract_features_from_modules(modules)
-        Summarizer-->>UC: Feature List (Structured)
-        
-        UC->>Summarizer: map_files_to_features(files, features)
-        Summarizer-->>UC: Mapping {feature: [files]}
-        
         loop For each Feature
-            UC->>Summarizer: generate_feature_page(feature, summaries)
-            Summarizer-->>UC: Feature Page Content
-            UC->>Repo: save_feature_page(feature, content)
+            %% 5a. Functional Narrative ("The Story")
+            UC->>Summarizer: generate_feature_narrative(feature, summaries)
+            Summarizer-->>UC: Narrative Markdown
+            
+            %% 5b. Technical Deep Dives (Facets)
+            UC->>Summarizer: generate_feature_technical_deep_dive(..., "ARCHITECTURE_LIFECYCLE")
+            Summarizer-->>UC: Architecture Deep Dive
+            
+            UC->>Summarizer: generate_feature_technical_deep_dive(..., "DATA_FLOW_TRANSFORMATIONS")
+            Summarizer-->>UC: Data Flow Deep Dive
+            
             opt Indexing
-                UC->>Indexer: index_feature_page(project, feature, content)
+                UC->>Indexer: index_feature_page(Narrative)
             end
         end
 
-        %% 5. Persistence (Site Generation)
-        UC->>SiteGen: build_site(overview, modules, features, mapping)
-        SiteGen-->>UC: Saved Files & Sitemap
+        %% 6. Persistence (Nested Site Generation)
+        UC->>SiteGen: build_site(overview, modules, narratives, deep_dives, ...)
+        SiteGen->>SiteGen: Generate toc.json (nested modules)
+        SiteGen-->>UC: Saved Files
     end
 ```
+
+## Philosophie de Documentation : "Fluidité & Deep Linking"
+
+Pour éviter la séparation stricte entre "Récit Fonctionnel" et "Implémentation Technique", l'architecture suit une approche de **Tissage** :
+
+1. **Feature comme Conteneur** : Les modules ne sont pas isolés dans une section annexe, mais présentés comme des "Détails d'Implémentation" directement sous la Feature qu'ils servent.
+2. **Context Injection** : Lors de la génération du résumé d'un module, le LLM reçoit la liste des Features auxquelles ce module participe. Il génère alors un bloc `> [!NOTE]` explicite liant la technique au fonctionnel.
+3. **Navigation Bidirectionnelle** : L'utilisateur peut naviguer de la Story vers le Module (via le TOC imbriqué et les liens contextuels) et du Module vers la Story (via les backlinks générés en début de fichier).
 
 ---
 

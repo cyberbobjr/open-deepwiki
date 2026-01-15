@@ -207,7 +207,7 @@ class SemanticSummarizer:
             content=(
                 "Analyze this source file and produce a detailed summary.\n\n"
                 "Requirements:\n"
-                "1. **Semantic Role**: One concise line identifying the architectural role (e.g., 'Core Context Port', 'Data Entity', 'Orchestration Service').\n"
+                "1. **Architectural Role**: Strictly one of ['Core Domain', 'Infrastructure Adapter', 'Application Service', 'Configuration', 'DTO/Entity', 'Utility'].\n"
                 "2. **Strategic Responsibility**: Explain *WHY* this file exists. What business problem does it solve?\n"
                 "3. **Business Invariants**: List 2-3 non-negotiable rules or logic enforced by this file (e.g., 'A user must always have an email').\n"
                 "4. **Key Features**: 3-5 bullet points focusing on capabilities.\n\n"
@@ -275,6 +275,7 @@ class SemanticSummarizer:
         self,
         module_name: str,
         file_summaries: List[str],
+        related_features: List[str] = None,
         max_chars: int = 60_000,
     ) -> ModuleMetadata:
         """Generate a module/folder summary with architectural focus."""
@@ -290,12 +291,21 @@ class SemanticSummarizer:
 
         joined = "\n\n".join(summaries)
         joined = _truncate_middle(joined, max_chars=max_chars)
+        
+        features_context = ""
+        if related_features:
+            features_list = ", ".join([f"[[{f}]]" for f in related_features])
+            features_context = (
+                f"\nCONTEXT: This module participates in the following features: {features_list}.\n"
+                "IMPORTANT: You MUST add a callout at the very top of the summary:\n"
+                f"> [!NOTE]\n> This module is a technical component of: {features_list}.\n"
+            )
 
         system = SystemMessage(
             content=(
                 "You are a software architect documenting a system module. "
                 "Focus on the module's BOUNDARIES (what goes in/out) and its internal collaboration. "
-                "You must classify the module into a category (e.g. Core, Infrastructure, API, Utils). "
+                "You must classify the module into a category: 'Domain', 'Infrastructure', 'Entrypoints', 'Core', 'Utils', 'Config'. "
                 "Start the summary with a H1 Title: `# <ModuleName>`. "
                 "Return clean Markdown with Mermaid diagrams for the summary field.\n"
                 f"{MERMAID_RULES_PROMPT}"
@@ -313,6 +323,7 @@ class SemanticSummarizer:
                 "5. **Architecture Diagrams**:\n"
                 "   - `classDiagram`: Show structure.\n"
                 "   - `sequenceDiagram`: Show a key data flow entering the boundary and being processed.\n\n"
+                f"{features_context}\n"
                 f"Folder: {module_name}\n\n"
                 "File summaries:\n"
                 f"{joined}"
@@ -400,12 +411,83 @@ class SemanticSummarizer:
                 f"_LLM overview generation failed: {type(e).__name__}: {e}_\n"
             )
 
+    def detect_features_hybrid(
+        self,
+        module_contents: Dict[str, str],
+        entrypoint_contents: Sequence[str],
+        project_vision: str,
+        graph_data_summary: str,
+        max_chars: int = 60_000,
+    ) -> FeatureList:
+        """
+        Hybrid Feature Discovery merging Vision (Top-Down), Entrypoints (Intent), and Modules (Structure).
+        """
+        # 1. Structure Context (Modules)
+        # We now expect raw concatenated file summaries for modules, or pre-summarized text
+        joined_modules = "\n\n".join(
+            f"### Module {k}\n{content}" 
+            for k, content in module_contents.items()
+        )
+        
+        # 2. Entrypoint Context (User Intent)
+        joined_entrypoints = "\n\n".join(entrypoint_contents)
+        
+        # 3. Vision (README)
+        vision = (project_vision or "").strip()
+        if not vision:
+            vision = "_No project vision provided (missing README)._"
+
+        # 4. Graph Evidence
+        graph_context = (graph_data_summary or "").strip()
+        if not graph_context:
+            graph_context = "_No graph data available._"
+
+        # Truncate to fit context
+        # We prioritize Vision > Entrypoints > Modules > Graph
+        # But we need a balanced view. 
+        # Let's allocate tokens relative to importance.
+        
+        # Simple concatenation for now with global truncate
+        combined_context = (
+            f"=== PRODUCT VISION (High Priority) ===\n{vision}\n\n"
+            f"=== ENTRYPOINTS (User Intent) ===\n{joined_entrypoints}\n\n"
+            f"=== STRUCTURAL CLUSTERS (Graph) ===\n{graph_context}\n\n"
+            f"=== MODULE SUMMARIES (Implementation) ===\n{joined_modules}"
+        )
+        
+        final_context = _truncate_middle(combined_context, max_chars=max_chars)
+
+        system = SystemMessage(
+            content=(
+                "You are a Product Manager and System Architect. "
+                "Identify 5-10 Cross-Cutting Features by reconciling: "
+                "1. **User Intent**: What do the Entrypoints allow the user to do? "
+                "2. **Product Vision**: What does the README say the project is for? "
+                "3. **Technical Grouping**: What do the Module Summaries tell us about internal organization? "
+                "4. **Graph Clusters**: What components are structurally coupled?\n\n"
+                "Output a `FeatureList` where each feature is a FUNCTIONAL capability (e.g., 'Secure Payment Processing' instead of 'PaymentModule')."
+            )
+        )
+        
+        human = HumanMessage(
+            content=(
+                "Analyze the provided context and extract the primary hybrid features.\n\n"
+                f"{final_context}"
+            )
+        )
+        
+        try:
+             return self.llm.invoke_structured([system, human], FeatureList)
+        except Exception as e:
+            logger.error(f"Hybrid feature detection failed: {e}", exc_info=True)
+            return FeatureList(features=["General Functionality"])
+
     def extract_features_from_modules(
         self,
         module_summaries: Dict[str, str],
         max_chars: int = 60_000,
     ) -> FeatureList:
-        """Extract a refined list of features from module summaries."""
+        """Legacy: Extract features from module summaries only."""
         # Aggregate module summaries
         joined_modules = "\n\n".join(f"### Module {k}\n{v}" for k, v in module_summaries.items())
         context = _truncate_middle(joined_modules, max_chars=max_chars)
@@ -438,11 +520,17 @@ class SemanticSummarizer:
         file_summaries: Mapping[str, str],
         feature_list: FeatureList,
         batch_size: int = 10,
+        dependency_graph: Optional[Dict[str, List[str]]] = None,
+        entrypoints: Optional[List[str]] = None
     ) -> Dict[str, List[str]]:
-        """Classify files into the extracted features."""
+        """
+        Classify files into features using a Hybrid approach:
+        1. Anchor Entrypoints (LLM)
+        2. Propagate through Graph (Structure)
+        3. Classify Remaining (LLM)
+        """
         features = [f.strip() for f in feature_list.features if (f or "").strip()]
         if not features:
-            # Fallback if LLM returned nothing
             features = ["General"]
 
         # Deduplicate features list
@@ -453,66 +541,101 @@ class SemanticSummarizer:
                 unique_features.append(f)
                 seen.add(f)
         features = unique_features
-
-        files = [(k, v) for k, v in (file_summaries or {}).items() if (k or "").strip()]
-        batches: List[List[Tuple[str, str]]] = []
-        for i in range(0, len(files), batch_size):
-            batches.append(files[i : i + batch_size])
+        default_feature = features[0]
 
         assignments: Dict[str, str] = {}
-
-        system = SystemMessage(
-            content=(
-                "You are a senior software analyst performing zero-shot classification. "
-                "Assign each file to exactly ONE feature from the provided list. "
-            )
-        )
-
-        for batch in batches:
-            payload_items: List[Dict[str, str]] = []
-            for path, summary in batch:
-                payload_items.append(
-                    {
-                        "file_path": path,
-                        "summary": _truncate_middle(summary or "", max_chars=6_000),
-                    }
-                )
-
-            human = HumanMessage(
+        
+        # Helper for LLM classification
+        def _classify_subset(subset: Dict[str, str]) -> Dict[str, str]:
+            if not subset:
+                return {}
+            
+            subset_assignments = {}
+            files_items = list(subset.items())
+            
+            batches = []
+            for i in range(0, len(files_items), batch_size):
+                batches.append(files_items[i : i + batch_size])
+                
+            system = SystemMessage(
                 content=(
-                    "Classify each file into the single most relevant feature.\n\n"
-                    "FEATURE LIST:\n"
-                    f"{json.dumps(features, ensure_ascii=False)}\n\n"
-                    "FILES (JSON array of objects with fields 'file_path' and 'summary'):\n"
-                    f"{json.dumps(payload_items, ensure_ascii=False)}\n\n"
-                    "Classify all files."
+                    "You are a senior software analyst performing zero-shot classification. "
+                    "Assign each file to exactly ONE feature from the provided list."
                 )
             )
+            
+            for batch in batches:
+                payload = [
+                    {"file_path": p, "summary": _truncate_middle(s or "", max_chars=6_000)}
+                    for p, s in batch
+                ]
+                human = HumanMessage(
+                    content=(
+                        "Classify each file into the single most relevant feature.\n\n"
+                        "FEATURE LIST:\n"
+                        f"{json.dumps(features, ensure_ascii=False)}\n\n"
+                        "FILES:\n"
+                        f"{json.dumps(payload, ensure_ascii=False)}"
+                    )
+                )
+                try:
+                    result: BatchClassification = self.llm.invoke_structured([system, human], BatchClassification)
+                    for assignment in result.assignments:
+                        if assignment.feature in features:
+                            subset_assignments[assignment.file_path] = assignment.feature
+                        else:
+                            subset_assignments[assignment.file_path] = default_feature
+                except Exception:
+                    for p, _ in batch:
+                        subset_assignments[p] = default_feature
+            
+            return subset_assignments
 
-            try:
-                result: BatchClassification = self.llm.invoke_structured([system, human], BatchClassification)
-                for assignment in result.assignments:
-                    if assignment.feature in features:
-                       assignments[assignment.file_path] = assignment.feature
-                    else:
-                        assignments[assignment.file_path] = features[0]
-            except Exception:
-                # Fallback on error
-                for path, _ in batch:
-                    assignments[path] = features[0]
+        # 1. Anchor Entrypoints
+        if entrypoints:
+            ep_subset = {k: v for k, v in file_summaries.items() if k in entrypoints}
+            if ep_subset:
+                logger.info(f"Classifying {len(ep_subset)} entrypoints as anchors.")
+                ep_assignments = _classify_subset(ep_subset)
+                assignments.update(ep_assignments)
 
-        default_feature = features[0]
-        for file_path, _summary in files:
-            if file_path not in assignments:
-                assignments[file_path] = default_feature
+        # 2. Graph Propagation (BFS)
+        if dependency_graph and assignments:
+            logger.info("Propagating features through dependency graph...")
+            # Queue: (file_path, feature)
+            queue = list(assignments.items())
+            visited = set(assignments.keys())
+            
+            while queue:
+                current_file, feature = queue.pop(0)
+                
+                # Get neighbors (outgoing calls -> dependencies)
+                # If A calls B, and A is feature X, likely B is feature X (unless B is shared utils)
+                # Logic: Entrypoint (Feature X) -> calls Service (Feature X) -> calls Repo (Feature X)
+                neighbors = dependency_graph.get(current_file, [])
+                
+                for neighbor in neighbors:
+                    if neighbor not in visited and neighbor in file_summaries:
+                        # Assign and propagate
+                        assignments[neighbor] = feature
+                        visited.add(neighbor)
+                        queue.append((neighbor, feature))
 
+        # 3. Classify Remaining
+        remaining_subset = {k: v for k, v in file_summaries.items() if k not in assignments}
+        if remaining_subset:
+            logger.info(f"Classifying {len(remaining_subset)} remaining files with LLM.")
+            rem_assignments = _classify_subset(remaining_subset)
+            assignments.update(rem_assignments)
+
+        # Invert to Feature -> List[Files]
         by_feature: Dict[str, List[str]] = {f: [] for f in features}
         for file_path, feature in sorted(assignments.items(), key=lambda kv: kv[0]):
             by_feature.setdefault(feature, []).append(file_path)
 
         return by_feature
 
-    def generate_feature_page(
+    def generate_feature_narrative(
         self,
         feature_name: str,
         related_file_summaries: Sequence[str],
@@ -523,60 +646,102 @@ class SemanticSummarizer:
         summaries = [s.strip() for s in (related_file_summaries or []) if (s or "").strip()]
 
         related_titles = _extract_file_titles_from_summaries(summaries)
-        logger.info(f"Generating feature page for: '{name}'. Found {len(related_titles)} related files: {related_titles}")
-
-        if not related_titles and summaries:
-             logger.warning(f"Feature '{name}': Summaries found but no file titles extracted. Check summary format.")
-        elif not summaries:
-             logger.warning(f"Feature '{name}': No file summaries provided.")
+        logger.info(f"Generating feature narrative for: '{name}'. Found {len(related_titles)} related files.")
 
         joined = _truncate_middle("\n\n".join(summaries), max_chars=max_chars)
 
         system = SystemMessage(
             content=(
-                "You are a senior software architect creating a deep and detailed documentation. "
-                "You are generating a deep and detailed Feature Page. "
-                "Tell the 'Story' of this feature: how it works, why it exists, and how data moves through it. "
-                "Include granular Mermaid diagrams showing data transformations.\n"
+                "You are a Product Owner and Senior Architect telling the 'Story' of a feature. "
+                "Focus on the User Intent, High-Level Flow, and Business Value. "
+                "Avoid low-level class names or implementation details in the narrative. "
+                "Use Mermaid `sequenceDiagram` for high-level user flows only.\n"
                 f"{MERMAID_RULES_PROMPT}"
             )
         )
 
         human = HumanMessage(
             content=(
-                "Write a functional feature narrative.\n\n"
+                "Write a Functional Feature Narrative.\n\n"
                 "Structure:\n"
                 "1. **The Story**: A narrative explanation of the user flow (User does X, System executes Y...).\n"
-                "2. **Purpose and Scope**: What does this feature do? What is its role in the system?\n"
-                "3. **Data Flow**: Describe how data is transformed step-by-step.\n"
-                "4. **Participant Components**: Key files involved and their specific duties in this feature.\n"
-                "5. **Visual Execution**:\n"
-                "   - `sequenceDiagram`: detailed flow showing data objects being passed/transformed.\n"
-                "   - `classDiagram`: relevant subset of classes.\n\n"
-                "**Primary Participating Modules**: List the top 1-3 modules that drive this feature.\n\n"
-                "Deep Linking:\n"
-                "- Mention related modules or concepts using `[[Concept Name]]` or standard markdown links if paths are known.\n\n"
+                "2. **Business Value**: Why does this feature exist? Who benefits?\n"
+                "3. **High-Level Flow**: A simplified sequence diagram showing the interactions.\n"
+                "4. **Key Capabilities**: Bullet points of what the user can do.\n\n"
+                "Style:\n"
+                "- Engaging, clear, and non-technical (until the diagrams).\n"
+                "- Use 'Note' callouts for important context.\n\n"
                 f"Feature: {name}\n\n"
                 "File summaries:\n"
                 f"{joined}"
             )
         )
 
+        return self._invoke_and_clean([system, human], f"# {name}")
+
+    def generate_feature_technical_deep_dive(
+        self,
+        feature_name: str,
+        related_file_summaries: Sequence[str],
+        facet_type: str,
+        max_chars: int = 60_000,
+    ) -> str:
+        """Generate a technical deep dive for a specific facet."""
+        name = (feature_name or "").strip()
+        summaries = [s.strip() for s in (related_file_summaries or []) if (s or "").strip()]
+        joined = _truncate_middle("\n\n".join(summaries), max_chars=max_chars)
+
+        facet_prompts = {
+            "ARCHITECTURE_LIFECYCLE": (
+                "Deep Dive: Architecture & Lifecycle",
+                "Focus on Component Instantiation, Dependencies, and Lifecycle Management.\n"
+                "Who builds what? How are services injected? What is the startup sequence?\n"
+                "Use `classDiagram` to show relationships and `sequenceDiagram` for initialization."
+            ),
+            "DATA_FLOW_TRANSFORMATIONS": (
+                "Deep Dive: Data Flow & Transformations",
+                "Focus on DTOs, Entities, and Data persistence logic.\n"
+                "Trace how a request payload is converted to internal models and then to storage.\n"
+                "Use `classDiagram` for DTOs/Entities and `sequenceDiagram` for data movement."
+            )
+        }
+
+        title, instructions = facet_prompts.get(facet_type, ("Deep Dive", "Focus on technical details."))
+
+        system = SystemMessage(
+            content=(
+                "You are a Senior Engineer writing a Technical Reference. "
+                f"Topic: {title}. "
+                "Be precise, technical, and exhaustive. Use code references where possible.\n"
+                f"{MERMAID_RULES_PROMPT}"
+            )
+        )
+
+        human = HumanMessage(
+            content=(
+                f"Write a technical deep dive on {title}.\n\n"
+                "Instructions:\n"
+                f"{instructions}\n\n"
+                f"Feature: {name}\n\n"
+                "File summaries:\n"
+                f"{joined}"
+            )
+        )
+        
+        return self._invoke_and_clean([system, human], f"# {name}: {title}")
+
+    def _invoke_and_clean(self, messages: List[BaseMessage], default_header: str) -> str:
+        """Helper to invoke LLM and clean response."""
         try:
-            response_content = self.llm.invoke([system, human])
-            # Handle string or message content
-            text_content = str(response_content.content) if hasattr(response_content, "content") else str(response_content)
-            body = _clean_llm_response(text_content).strip()
+            response = self.llm.invoke(messages)
+            text = str(response.content) if hasattr(response, "content") else str(response)
+            body = _clean_llm_response(text).strip()
             
             if not body:
-                body = "_No content generated._"
-            
-            # Ensure title is present and is H1
-            if body.startswith("## "):
-                 body = "# " + body[3:]
-            elif not body.startswith("# "):
-                 body = f"# {name}\n\n{body}"
-            
+                return f"{default_header}\n\n_No content generated._\n"
+
+            if not body.startswith("#"):
+                return f"{default_header}\n\n{body}\n"
             return body + "\n"
         except Exception as e:
-            return f"# {name}\n\n_Feature page generation failed: {e}_\n"
+            return f"{default_header}\n\n_Generation failed: {e}_\n"
