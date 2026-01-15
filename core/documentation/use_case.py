@@ -1,3 +1,4 @@
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Dict, List, Optional
@@ -68,6 +69,17 @@ class GenerateDocumentationUseCase:
                 parent = Path(fpath).parent
                 file_summaries_by_folder.setdefault(parent, []).append(summary)
         else:
+            # Checkpoint for file summaries
+            files_checkpoint_path = request.output_path.parent / "resume_state_files.json"
+            if files_checkpoint_path.exists():
+                try:
+                    with open(files_checkpoint_path, "r") as f:
+                        file_summaries_by_path = json.load(f)
+                        if request.progress_callback:
+                            request.progress_callback("semantic_files", f"Resumed {len(file_summaries_by_path)} file summaries from checkpoint.")
+                except Exception as e:
+                    logger.warning(f"Failed to load file checkpoint: {e}")
+
             # Scan and summarize
             grouped_files = self.reader.read_files(max_files=request.max_files)
             
@@ -78,6 +90,13 @@ class GenerateDocumentationUseCase:
             for folder, files in grouped_files.items():
                 summaries: List[str] = []
                 for file_path in files:
+                    s_path = str(file_path)
+                    
+                    # Resume check
+                    if s_path in file_summaries_by_path:
+                        summaries.append(file_summaries_by_path[s_path])
+                        continue
+
                     code = self.reader.read_file_content(file_path)
                     summary = self.summarizer.summarize_file(
                         file_path, 
@@ -85,8 +104,15 @@ class GenerateDocumentationUseCase:
                         max_chars=request.max_context_chars
                     )
                     summaries.append(summary)
-                    file_summaries_by_path[str(file_path)] = summary
-                
+                    file_summaries_by_path[s_path] = summary
+                    
+                    # Update Checkpoint
+                    try:
+                        with open(files_checkpoint_path, "w") as f:
+                            json.dump(file_summaries_by_path, f)
+                    except Exception:
+                        pass # Non-blocking
+
                 if request.progress_callback:
                     request.progress_callback("semantic_files", f"Processed folder {folder.name}")
                     
@@ -202,6 +228,20 @@ class GenerateDocumentationUseCase:
         module_summaries: Dict[str, str] = {}
         module_metadata_map: Dict[str, Any] = {} # Actually ModuleMetadata
 
+
+        
+        # --- PRE-LOOP: Load Checkpoint ---
+        module_checkpoint_path = request.output_path.parent / "resume_state_modules.json"
+        saved_modules = {}
+        if module_checkpoint_path.exists():
+             try:
+                with open(module_checkpoint_path, "r") as f:
+                    saved_modules = json.load(f) # {key: summary}
+                    if request.progress_callback:
+                            request.progress_callback("semantic_modules", f"Resumed {len(saved_modules)} module summaries.")
+             except Exception:
+                pass
+
         for folder, summaries in file_summaries_by_folder.items():
             try:
                 rel = folder.resolve().relative_to(request.root_dir.resolve())
@@ -209,6 +249,21 @@ class GenerateDocumentationUseCase:
             except Exception:
                 key = str(folder)
             
+            # Resume Check
+            if key in saved_modules:
+                mod_summary = saved_modules[key]
+                module_summaries[key] = mod_summary
+                from core.documentation.semantic_summarizer import \
+                    ModuleMetadata
+                module_metadata_map[key] = ModuleMetadata(
+                    file_path=str(folder),
+                    summary=mod_summary,
+                    related_features=[], # Lost if not saved.
+                    main_classes=[],
+                    dependencies=[]
+                )
+                continue
+
             # Fetch related features for this module
             related = module_to_features.get(key, [])
             
@@ -227,6 +282,14 @@ class GenerateDocumentationUseCase:
             # Index Module Summary
             if request.index_into_chroma:
                 self.indexer.index_module_summary(request.project_name, key, mod_summary)
+            
+            # Save Checkpoint
+            saved_modules[key] = mod_summary
+            try:
+                with open(module_checkpoint_path, "w") as f:
+                    json.dump(saved_modules, f)
+            except Exception:
+                pass
 
         # 5. Generate Project Overview
         if request.progress_callback:
@@ -308,5 +371,16 @@ class GenerateDocumentationUseCase:
                 module_metadata=module_metadata_map,
                 feature_to_modules=feature_to_modules
             )
+
+        # Cleanup Checkpoints
+        try:
+            files_chk = request.output_path.parent / "resume_state_files.json"
+            mods_chk = request.output_path.parent / "resume_state_modules.json"
+            if files_chk.exists():
+                files_chk.unlink()
+            if mods_chk.exists():
+                mods_chk.unlink()
+        except Exception as e:
+            logger.warning(f"Failed to cleanup checkpoints: {e}")
 
         return request.output_path

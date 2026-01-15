@@ -101,6 +101,7 @@ async function loadContent() {
 
 // Navigation Handler
 function onNavigate(docPath: string, hash?: string) {
+  console.log(docPath, hash)
   // Update route query
   router.push({
     query: { ...route.query, path: docPath },

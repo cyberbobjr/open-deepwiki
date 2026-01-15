@@ -12,6 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from config import (AppConfig, apply_config_to_env, configure_logging,
                     load_config, prefetch_tiktoken_encodings)
 from core.database import create_db_and_tables
+from core.project_graph.sqlite_store import SqliteProjectGraphStore
 from router.api import router as api_router
 from router.auth import router as auth_router
 from router.groups import router as groups_router
@@ -65,6 +66,23 @@ def create_app() -> FastAPI:
             fastapi_app.state.project_overviews = {}
             fastapi_app.state.indexing_statuses = {}
             fastapi_app.state.default_project = None
+
+            # Startup Hook: Check for stuck jobs
+            try:
+                graph_path = str(getattr(config, "project_graph_sqlite_path", "./project_graph.sqlite3") or "./project_graph.sqlite3")
+                store = SqliteProjectGraphStore(sqlite_path=graph_path)
+                
+                import sqlite3
+                
+                with sqlite3.connect(store._path) as conn:
+                    # Mark all in_progress as FAILED
+                    conn.execute(
+                        "UPDATE indexing_jobs SET status = ?, error = ? WHERE status = ?",
+                        ("failed", "Server crash detected", "in_progress")
+                    )
+            except Exception as e:
+                logging.getLogger(__name__).warning(f"Failed to run startup recovery hook: {e}")
+
         except Exception as e:  # pragma: no cover
             logging.getLogger(__name__).exception("Failed to initialize vectorstore/retriever")
             fastapi_app.state.startup_error = str(e)

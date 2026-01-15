@@ -192,7 +192,7 @@ button:disabled {
 }
 
 .doc-markdown :where(h2) {
-  margin-top: 2em;
+  margin-top: 1em;
   margin-bottom: 1em;
   font-size: 1.5em;
   line-height: 1.3333333;
@@ -209,6 +209,10 @@ button:disabled {
   @apply text-slate-900 tracking-tight;
 }
 
+.doc-markdown :where(h3):first-child {
+  margin-top: 0;
+}
+
 .doc-markdown :where(h4) {
   margin-top: 1.5em;
   margin-bottom: 0.5em;
@@ -216,8 +220,8 @@ button:disabled {
 }
 
 .doc-markdown :where(ul, ol) {
-  margin-top: 1.25em;
-  margin-bottom: 1.25em;
+  margin-top: .25em;
+  margin-bottom: .25em;
   padding-left: 1.625em;
   @apply list-outside;
 }
@@ -307,8 +311,8 @@ button:disabled {
 }
 
 .doc-markdown :where(hr) {
-  margin-top: 3em;
-  margin-bottom: 3em;
+  margin-top: 1em;
+  margin-bottom: 1em;
   @apply border-slate-200;
 }
 

@@ -59,6 +59,30 @@ class SqliteProjectGraphStore(GraphStore):
             )
             conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(project, src)")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(project, dst)")
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS file_status (
+                    project TEXT NOT NULL,
+                    file_path TEXT NOT NULL,
+                    file_hash TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    last_updated TEXT,
+                    PRIMARY KEY(project, file_path)
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS indexing_jobs (
+                    project TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    started_at TEXT NOT NULL,
+                    updated_at TEXT,
+                    error TEXT,
+                    PRIMARY KEY(project)
+                )
+                """
+            )
 
     @staticmethod
     def _scoped_id(project: Optional[str], method_id: str) -> str:
@@ -345,4 +369,77 @@ class SqliteProjectGraphStore(GraphStore):
             for src_path, dst_path in rows:
                 dependencies.setdefault(src_path, []).append(dst_path)
                 
+                
         return dependencies
+
+    def get_file_status(self, *, project: str, file_path: str) -> Optional[Dict[str, Any]]:
+        """Get tracking status for a file."""
+        with sqlite3.connect(self._path) as conn:
+            row = conn.execute(
+                "SELECT file_hash, status, last_updated FROM file_status WHERE project = ? AND file_path = ?",
+                (project, file_path),
+            ).fetchone()
+            if row:
+                return {
+                    "file_hash": row[0],
+                    "status": row[1],
+                    "last_updated": row[2],
+                }
+        return None
+
+    def update_file_status(
+        self, *, project: str, file_path: str, file_hash: str, status: str
+    ) -> None:
+        """Update or insert file tracking status."""
+        import datetime
+        now = datetime.datetime.utcnow().isoformat()
+        with sqlite3.connect(self._path) as conn:
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO file_status (project, file_path, file_hash, status, last_updated)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (project, file_path, file_hash, status, now),
+            )
+
+    def get_indexing_job(self, *, project: str) -> Optional[Dict[str, Any]]:
+        """Get the last known indexing job state for a project."""
+        with sqlite3.connect(self._path) as conn:
+            conn.row_factory = sqlite3.Row
+            row = conn.execute(
+                "SELECT * FROM indexing_jobs WHERE project = ?", (project,)
+            ).fetchone()
+            if row:
+                return dict(row)
+        return None
+
+    def update_indexing_job(
+        self, *, project: str, status: str, started_at: Optional[str] = None, error: Optional[str] = None
+    ) -> None:
+        """Update indexing job state."""
+        import datetime
+        now = datetime.datetime.utcnow().isoformat()
+        
+        # If started_at is provided, we might be starting a new job, so upsert.
+        # If not, we update the existing job.
+        with sqlite3.connect(self._path) as conn:
+            if started_at:
+                conn.execute(
+                    """
+                    INSERT OR REPLACE INTO indexing_jobs (project, status, started_at, updated_at, error)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (project, status, started_at, now, error),
+                )
+            else:
+                # Update existing
+                fields = ["status = ?", "updated_at = ?"]
+                params = [status, now]
+                if error is not None:
+                    fields.append("error = ?")
+                    params.append(error)
+                
+                params.append(project)
+                
+                query = f"UPDATE indexing_jobs SET {', '.join(fields)} WHERE project = ?"
+                conn.execute(query, params)

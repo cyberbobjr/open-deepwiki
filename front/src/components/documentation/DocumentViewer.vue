@@ -2,6 +2,7 @@
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import { nextTick, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { installMermaidFence, renderMermaidInRoot } from '../../utils/mermaid';
 
 const props = defineProps<{
@@ -16,6 +17,7 @@ const emit = defineEmits<{
 }>()
 
 // --- Markdown Rendering ---
+const route = useRoute()
 const md = new MarkdownIt({
     html: true,
     linkify: true,
@@ -48,7 +50,9 @@ function renderMarkdownWithToc(raw: string) {
                 const inlineToken = tokens[idx + 1]
                 if (!inlineToken) return
 
-                const text = inlineToken.content
+                const text = inlineToken.children
+                    ? inlineToken.children.reduce((acc, t) => acc + t.content, '')
+                    : inlineToken.content
 
                 let slug = text
                     .toLowerCase()
@@ -100,6 +104,21 @@ watch(() => props.markdown, async (newVal) => {
 
     await nextTick()
     await renderMermaidInRoot(document.body)
+
+    if (route.hash) {
+        // Wait a bit ensuring DOM is ready (sometimes images/mermaid might shift layout)
+        // extending delay slightly or just relying on nextTick
+        setTimeout(() => {
+            scrollToHeading(route.hash.substring(1))
+        }, 100)
+    }
+})
+
+// Watch hash change
+watch(() => route.hash, (newHash) => {
+    if (newHash) {
+        scrollToHeading(newHash.substring(1))
+    }
 })
 
 // --- Scroll Handling ---

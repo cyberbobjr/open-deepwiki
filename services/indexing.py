@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 # Documentation / RAG imports
 from core.documentation.pipeline import run_documentation_pipeline
@@ -89,6 +90,22 @@ def set_indexing_status(
 
     statuses[project] = entry
 
+    # Persist job status to SQLite
+    try:
+        config = getattr(app_state, "config", None)
+        graph_path = str(getattr(config, "project_graph_sqlite_path", "./project_graph.sqlite3") or "./project_graph.sqlite3")
+        store = SqliteProjectGraphStore(sqlite_path=graph_path)
+        
+        # Map fields to DB columns
+        store.update_indexing_job(
+            project=project, 
+            status=status, 
+            started_at=started_at, 
+            error=error
+        )
+    except Exception as e:
+        logger.warning(f"Failed to persist indexing job status: {e}")
+
 
 def get_indexing_status(app_state: Any, *, project: str) -> Dict[str, Any]:
     """Read in-memory indexing status for a project.
@@ -111,6 +128,14 @@ def get_indexing_status(app_state: Any, *, project: str) -> Dict[str, Any]:
     return {"project": project, "status": "done"}
 
 
+def _compute_file_hash(path: str) -> str:
+    """Compute MD5 hash of a file."""
+    try:
+        with open(path, "rb") as f:
+            return hashlib.md5(f.read()).hexdigest()
+    except Exception:
+        return ""
+
 def _scan_and_index_codebase(
     directory: Path,
     project: str,
@@ -118,8 +143,9 @@ def _scan_and_index_codebase(
     app_state: Any,
     reindex: bool,
     progress_callback: Any,
+    graph_store: SqliteProjectGraphStore,
 ) -> Tuple[List[CodeBlock], Any]:
-    """Scan codebase and index code blocks."""
+    """Scan codebase and index code blocks with resume capability."""
     blocks = scan_codebase(
         str(directory),
         exclude_tests=bool(getattr(config, "index_exclude_tests", True)),
@@ -139,8 +165,68 @@ def _scan_and_index_codebase(
 
     if bool(reindex):
         delete_scoped_documents(vectorstore, project=project)
+    
+    # --- Resume / Incremental Logic ---
+    blocks_to_index: List[CodeBlock] = []
+    
+    # Group by file
+    blocks_by_file: Dict[str, List[CodeBlock]] = {}
+    for b in blocks:
+        fp = getattr(b, "file_path", None)
+        if fp:
+            blocks_by_file.setdefault(fp, []).append(b)
+            
+    # Check statuses
+    files_to_process: Set[str] = set()
+    skipped_count = 0
+    
+    for file_path, file_blocks in blocks_by_file.items():
+        if reindex:
+            files_to_process.add(file_path)
+            continue
+            
+        current_hash = _compute_file_hash(file_path)
+        status = graph_store.get_file_status(project=project, file_path=file_path)
+        
+        if status and status["status"] == "COMPLETED" and status["file_hash"] == current_hash:
+            skipped_count += 1
+            continue
+        
+        files_to_process.add(file_path)
+        # Update hash in DB immediately or later? Later, after success.
+    
+    # Build list of blocks to index
+    for fp in files_to_process:
+        blocks_to_index.extend(blocks_by_file[fp])
+        
+    logger.info(f"Incremental indexing: {len(blocks_by_file)} files total. Skipping {skipped_count}. Indexing {len(files_to_process)}.")
 
-    index_code_blocks(blocks, vectorstore)
+    if not blocks_to_index:
+        return blocks, vectorstore
+
+    # Batch Indexing
+    BATCH_SIZE = 50
+    process_list = list(files_to_process)
+    
+    for i in range(0, len(process_list), BATCH_SIZE):
+        batch_files = process_list[i : i + BATCH_SIZE]
+        batch_blocks: List[CodeBlock] = []
+        for fp in batch_files:
+            batch_blocks.extend(blocks_by_file[fp])
+            
+        if batch_blocks:
+            index_code_blocks(batch_blocks, vectorstore)
+            
+        # Update status
+        for fp in batch_files:
+            h = _compute_file_hash(fp)
+            graph_store.update_file_status(
+                project=project, 
+                file_path=fp, 
+                file_hash=h, 
+                status="COMPLETED"
+            )
+
     return blocks, vectorstore
 
 
@@ -372,8 +458,16 @@ def run_index_directory_job(
 
             # 1. Scan and Index Code
             set_indexing_status(app_state, project=project, status="in_progress", step="scanning", details="Scanning codebase...")
+            
+            # Init GraphStore early for status tracking
+            graph_path = str(
+                getattr(config, "project_graph_sqlite_path", "./project_graph.sqlite3")
+                or "./project_graph.sqlite3"
+            )
+            graph_store = SqliteProjectGraphStore(sqlite_path=graph_path)
+
             blocks, vectorstore = _scan_and_index_codebase(
-                directory, project, config, app_state, reindex, _progress
+                directory, project, config, app_state, reindex, _progress, graph_store
             )
             
             if not blocks:
