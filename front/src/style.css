@@ -33,7 +33,6 @@ button:disabled {
 .chat-markdown {
   white-space: normal;
   word-break: break-word;
-  margin-top: 1rem;
   @apply text-sm leading-relaxed text-slate-900;
 }
 

@@ -135,9 +135,18 @@ export async function askStream(
   opts?: { signal?: AbortSignal },
 ): Promise<void> {
   const url = `${getApiBase()}/ask/stream`
+  const token = localStorage.getItem('token')
+  const authHeaders: Record<string, string> = {}
+  if (token) {
+    authHeaders['Authorization'] = `Bearer ${token}`
+  }
+
   const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...authHeaders,
+    },
     body: JSON.stringify(req),
     signal: opts?.signal,
   })

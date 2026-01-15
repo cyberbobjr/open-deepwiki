@@ -12,7 +12,7 @@ function handleLogout() {
 </script>
 
 <template>
-  <div class="min-h-screen bg-slate-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+  <div class="h-screen flex flex-col overflow-hidden bg-slate-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
     <nav v-if="authStore.isAuthenticated"
       class="bg-white dark:bg-gray-800 shadow p-4 flex justify-between items-center">
       <div class="flex items-center space-x-4">
@@ -28,6 +28,8 @@ function handleLogout() {
         <button @click="handleLogout" class="text-sm text-red-500 hover:text-red-700">Logout</button>
       </div>
     </nav>
-    <router-view />
+    <main class="flex-1 min-h-0 overflow-auto">
+      <router-view />
+    </main>
   </div>
 </template>

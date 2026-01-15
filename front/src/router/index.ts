@@ -3,7 +3,7 @@ import { useAuthStore } from '../stores/auth'
 
 import AdminGroupsView from '../views/AdminGroupsView.vue'
 import AdminUsersView from '../views/AdminUsersView.vue'
-import ConversationView from '../views/ConversationView.vue'
+import ChatView from '../views/ChatView.vue'
 import LoginView from '../views/LoginView.vue'
 import ProjectOverviewView from '../views/ProjectOverviewView.vue'
 import ProjectsView from '../views/ProjectsView.vue'
@@ -30,7 +30,7 @@ export const router = createRouter({
     {
       path: '/projects/:project/chat',
       name: 'chat',
-      component: ConversationView,
+      component: ChatView,
       props: true,
       meta: { requiresAuth: true }
     },
