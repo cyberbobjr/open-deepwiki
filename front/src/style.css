@@ -177,10 +177,11 @@ button:disabled {
   @apply text-base leading-7 text-slate-900;
 }
 
+/* 
 .doc-markdown :where(p) {
   margin-top: 1.25em;
   margin-bottom: 1.25em;
-}
+} */
 
 .doc-markdown :where(h1) {
   margin-top: 0;
